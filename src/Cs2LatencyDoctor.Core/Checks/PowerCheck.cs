@@ -71,23 +71,38 @@ public sealed class PowerCheck : IDiagnosticCheck
             }
         }
 
-        // Схема питания: на настольном ПК нас интересует, не "Экономия энергии" ли активна.
-        if (!string.IsNullOrEmpty(state.SchemeName))
+        // Схема питания: на настольном ПК нас интересует, не «Экономия энергии» ли активна.
+        // Определяем её по GUID, а не по названию: названия локализованы, GUID — нет.
+        if (!string.IsNullOrEmpty(state.SchemeGuid))
         {
-            var isPowerSaver = state.SchemeName.Contains("эконом", StringComparison.OrdinalIgnoreCase)
-                            || state.SchemeName.Contains("power saver", StringComparison.OrdinalIgnoreCase);
-
-            if (isPowerSaver)
+            if (PowerConfigReader.IsPowerSaverScheme(state.SchemeGuid))
             {
                 results.Add(CheckResult.Warn(Id + ".scheme", "Схема электропитания",
-                    $"Активна схема «{state.SchemeName}»",
+                    $"Активна схема «{state.SchemeName ?? "Экономия энергии"}»",
                     "Схема экономии ограничивает частоту процессора и агрессивно усыпляет устройства."));
             }
             else
             {
+                var known = PowerConfigReader.DescribeScheme(state.SchemeGuid);
+                var shown = state.SchemeName ?? known ?? "неизвестная схема";
+
                 results.Add(CheckResult.Ok(Id + ".scheme", "Схема электропитания",
-                    $"«{state.SchemeName}» — подходит"));
+                    $"«{shown}» — подходит"));
             }
+        }
+        else if (!string.IsNullOrEmpty(state.SchemeName))
+        {
+            // GUID не прочитался — остаётся проверка по названию. Она работает
+            // только на русской и английской Windows, поэтому это запасной путь.
+            var isPowerSaver = state.SchemeName.Contains("эконом", StringComparison.OrdinalIgnoreCase)
+                            || state.SchemeName.Contains("power saver", StringComparison.OrdinalIgnoreCase);
+
+            results.Add(isPowerSaver
+                ? CheckResult.Warn(Id + ".scheme", "Схема электропитания",
+                    $"Активна схема «{state.SchemeName}»",
+                    "Схема экономии ограничивает частоту процессора и агрессивно усыпляет устройства.")
+                : CheckResult.Ok(Id + ".scheme", "Схема электропитания",
+                    $"«{state.SchemeName}» — подходит"));
         }
 
         return Task.FromResult<IReadOnlyList<CheckResult>>(results);

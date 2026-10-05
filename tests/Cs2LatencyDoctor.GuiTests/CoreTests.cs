@@ -69,7 +69,6 @@ internal static class CoreTests
     public static void Run(List<(string Name, bool Passed, string? Error)> results)
     {
         var registryAvailable = RegistryWritable();
-        var skipReason = "среда запрещает запись в реестр — проверка пропущена";
 
         if (registryAvailable)
         {

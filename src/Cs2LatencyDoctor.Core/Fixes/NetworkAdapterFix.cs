@@ -88,18 +88,18 @@ public sealed class NetworkAdapterFix : FixBase
     {
         if (entry.Kind != "registryKeyword") return false;
 
+        // Запись журнала всегда ведёт в ветку класса сетевых драйверов HKLM.
+        var hive = Microsoft.Win32.RegistryHive.LocalMachine;
+
         // Если значения изначально не было — удаляем его, а не пишем пустую строку.
         if (string.IsNullOrEmpty(entry.OldValue))
-        {
-            return RegistryValueReader.DeleteValue(RegistryHive.LocalMachine, entry.Location, entry.Name);
-        }
+            return RegistryValueReader.DeleteValue(hive, entry.Location, entry.Name);
 
-        if (!RegistryValueReader.WriteValue(RegistryHive.LocalMachine, entry.Location, entry.Name, entry.OldValue))
+        if (!RegistryValueReader.WriteValue(hive, entry.Location, entry.Name, entry.OldValue))
             return false;
 
-        var adapter = entry.Location.Split('\\')[^1];
-        return Verify(() => RegistryValueReader.ReadRawString(
-            RegistryHive.LocalMachine, entry.Location, entry.Name), entry.OldValue);
+        var actual = RegistryValueReader.ReadRawString(hive, entry.Location, entry.Name);
+        return string.Equals(actual, entry.OldValue, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Активный адаптер: сначала из контекста (его определила проверка маршрута), иначе первый проводной.</summary>
