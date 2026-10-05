@@ -9,6 +9,17 @@ using Cs2LatencyDoctor.Core.History;
 // Регистрируем старые кодировки: нужны для чтения вывода ping.exe и powercfg.
 AppBootstrap.Initialize();
 
+// Папку данных фиксируем один раз и передаём дочерним процессам через окружение.
+// Без этого запуск от администратора через UAC писал бы журнал отката в профиль
+// другого пользователя, и откат бы его не нашёл.
+if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable(UndoJournal.DataDirectoryVariable)))
+{
+    var resolved = UndoJournal.ResolveJournalPath();
+    var directory = resolved is null ? null : Path.GetDirectoryName(resolved);
+    if (directory is not null)
+        Environment.SetEnvironmentVariable(UndoJournal.DataDirectoryVariable, directory);
+}
+
 Console.OutputEncoding = Encoding.UTF8;
 Console.InputEncoding = Encoding.UTF8;
 

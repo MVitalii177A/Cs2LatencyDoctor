@@ -72,9 +72,17 @@ public static class NetworkPathResolver
 }
 
 /// <summary>
-/// Замер задержки: до роутера и до внешнего адреса.
-/// Разделение принципиально: проблемы до роутера — это твоя машина,
-/// проблемы дальше — провайдер, и они не лечатся настройками Windows.
+/// Замер задержки до роутера и до интернета.
+///
+/// Два участка разделены принципиально: проблемы до роутера — это твоя машина,
+/// проблемы дальше — провайдер, и настройками Windows они не лечатся.
+///
+/// Способы замера идут по убыванию точности, и это не прихоть: ICMP часто
+/// блокируется фаерволом или антивирусом, а пользователю нужен ответ, а не отговорка.
+///   1. ICMP напрямую — точные миллисекунды.
+///   2. TCP-подключение — работает почти всегда и идёт тем же путём, что игровой трафик.
+///   3. ping.exe — видит только факт ответа, миллисекунды недоступны.
+/// Если не сработало ничего — честно сообщаем, что измерить не удалось.
 /// </summary>
 public sealed class NetworkLatencyCheck : IDiagnosticCheck
 {
@@ -86,7 +94,7 @@ public sealed class NetworkLatencyCheck : IDiagnosticCheck
     public string Title => "Задержка и джиттер сети";
     public bool RequiresAdmin => false;
 
-    /// <summary>Внешний адрес для проверки. 1.1.1.1 выбран потому, что стабильно отвечает на ICMP.</summary>
+    /// <summary>Внешний адрес для проверки. 1.1.1.1 стабильно отвечает и по ICMP, и по TCP.</summary>
     public string ExternalTarget { get; init; } = "1.1.1.1";
 
     public async Task<IReadOnlyList<CheckResult>> RunAsync(DiagnosticContext context, CancellationToken ct)
@@ -94,18 +102,36 @@ public sealed class NetworkLatencyCheck : IDiagnosticCheck
         var results = new List<CheckResult>();
         var path = _pathOverride ?? NetworkPathResolver.Resolve();
 
+        const string gatewayWhy =
+            "Это твой участок: машина — кабель — роутер. Провайдер здесь ни при чём. " +
+            "Если тут есть всплески, виновата сетевая карта, её настройки или сам роутер.";
+
+        const string wanWhy =
+            "Это участок провайдера и магистрали. Настройками Windows он не лечится — " +
+            "но важен как ориентир: если до роутера ровно, а тут пила, вопрос к провайдеру.";
+
+        // ---------------------------------------------------------- до роутера
         if (!string.IsNullOrEmpty(path.Gateway))
         {
             context.GatewayAddress = path.Gateway;
             context.PrimaryAdapterName = path.PrimaryAdapterName;
 
             context.Progress($"Замеряю задержку до роутера ({path.Gateway})…");
-            var gw = await LatencyProbe.RunAsync(
+
+            var gatewayProbe = await LatencyProbe.RunAsync(
                 path.Gateway, context.ProbeSeconds, LatencyEvaluator.LocalSpikeThresholdMs, null, ct);
 
-            results.Add(LatencyEvaluator.Evaluate(gw, Id + ".gateway", "до роутера",
-                "Это твой участок: машина — кабель — роутер. Провайдер здесь ни при чём. " +
-                "Если тут есть всплески, виновата сетевая карта, её настройки или сам роутер."));
+            // ICMP не прошёл — пробуем TCP. Роутер слушает 80/443 практически всегда.
+            if (gatewayProbe.IsInconclusive)
+            {
+                context.Progress($"ICMP недоступен, замеряю до роутера через TCP ({path.Gateway})…");
+                var viaTcp = await TcpConnectProbe.RunAsync(
+                    path.Gateway, context.ProbeSeconds, LatencyEvaluator.LocalSpikeThresholdMs, null, ct);
+
+                if (!viaTcp.IsInconclusive) gatewayProbe = viaTcp;
+            }
+
+            results.Add(LatencyEvaluator.Evaluate(gatewayProbe, Id + ".gateway", "до роутера", gatewayWhy));
         }
         else
         {
@@ -113,13 +139,23 @@ public sealed class NetworkLatencyCheck : IDiagnosticCheck
                 "Шлюз по умолчанию не найден"));
         }
 
+        // --------------------------------------------------------- до интернета
+        // Здесь сразу TCP: во-первых, ICMP до внешних узлов режут чаще всего,
+        // во-вторых, TCP-путь — это ровно тот путь, по которому идёт игровой трафик.
         context.Progress($"Замеряю задержку до внешнего узла ({ExternalTarget})…");
-        var wan = await LatencyProbe.RunAsync(ExternalTarget, context.ProbeSeconds, 0, null, ct);
 
-        results.Add(LatencyEvaluator.Evaluate(LatencyEvaluator.ApplyWanThreshold(wan), Id + ".wan",
-            "до интернета",
-            "Это участок провайдера и магистрали. Настройками Windows он не лечится — " +
-            "но важен как ориентир: если до роутера ровно, а тут пила, вопрос к провайдеру."));
+        var wanProbe = await TcpConnectProbe.RunAsync(
+            ExternalTarget, context.ProbeSeconds, 0, null, ct);
+
+        if (wanProbe.IsInconclusive)
+        {
+            context.Progress($"TCP не прошёл, пробую ICMP до {ExternalTarget}…");
+            var viaIcmp = await LatencyProbe.RunAsync(ExternalTarget, context.ProbeSeconds, 0, null, ct);
+            if (!viaIcmp.IsInconclusive) wanProbe = viaIcmp;
+        }
+
+        results.Add(LatencyEvaluator.Evaluate(
+            LatencyEvaluator.ApplyWanThreshold(wanProbe), Id + ".wan", "до интернета", wanWhy));
 
         return results;
     }

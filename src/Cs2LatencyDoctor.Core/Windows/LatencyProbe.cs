@@ -8,14 +8,20 @@ namespace Cs2LatencyDoctor.Core.Windows;
 /// <summary>Каким способом удалось (или не удалось) замерить задержку.</summary>
 public enum ProbeMethod
 {
-    /// <summary>Прямой ICMP через .NET — самый точный, даёт время с точностью до мс.</summary>
+    /// <summary>Прямой ICMP через .NET — точный, даёт время с точностью до мс.</summary>
     DotNetIcmp = 0,
 
     /// <summary>Через ping.exe: значений задержки нет, но факт ответа известен.</summary>
     PingExe = 1,
 
     /// <summary>ICMP заблокирован (фаервол, антивирус, политика). Замер невозможен.</summary>
-    Blocked = 2
+    Blocked = 2,
+
+    /// <summary>
+    /// Замер временем установления TCP-соединения. Работает там, где ICMP режут,
+    /// и для игры даже показательнее: это тот же путь, по которому идёт игровой трафик.
+    /// </summary>
+    TcpConnect = 3
 }
 
 /// <summary>Итог замера задержки: не среднее, а распределение. Именно "пила" ломает ощущения в игре.</summary>
@@ -41,6 +47,9 @@ public sealed record LatencyProbeResult
 
     public double SpikeThresholdMs { get; init; }
 
+    /// <summary>Уточнение способа замера: например, какой порт ответил при TCP-замере.</summary>
+    public string? Detail { get; init; }
+
     public IReadOnlyList<double> Samples { get; init; } = Array.Empty<double>();
 
     public double LossPercent => Sent == 0 ? 0 : 100.0 * Lost / Sent;
@@ -48,6 +57,12 @@ public sealed record LatencyProbeResult
 
     /// <summary>ICMP не проходит вовсе — судить о сети по этому замеру нельзя.</summary>
     public bool IsInconclusive => Method == ProbeMethod.Blocked || Sent == 0;
+
+    /// <summary>
+    /// Узел не ответил ни разу. Это НЕ то же самое, что потери: так ведут себя
+    /// роутеры и серверы, закрытые фаерволом, — замер просто не состоялся.
+    /// </summary>
+    public bool IsNoResponse => IsInconclusive || (Method == ProbeMethod.PingExe && Received == 0);
 
     /// <summary>true, если сеть до цели ровная: нет потерь и практически нет всплесков.</summary>
     public bool IsFlat(double maxSpikePercent = 2.0) =>
@@ -81,20 +96,16 @@ public static class LatencyProbe
         if (addresses.Count == 0)
             return new LatencyProbeResult { Target = target, Sent = 0, Received = 0, Method = ProbeMethod.Blocked };
 
-        // Сначала пробуем точный способ. Один пробный запрос решает, какой метод использовать.
+        // Один пробный запрос решает, доступен ли ICMP вообще.
+        // Если нет — вызывающая сторона переключится на TCP-замер.
         var primary = await TryDotNetIcmpAsync(addresses[0], ct);
         if (primary.Available)
             return await RunDotNetAsync(target, addresses[0], seconds, spikeThresholdMs, onTick, ct);
 
-        var viaExe = await TryPingExeAsync(addresses[0], ct);
-        if (viaExe.Available)
-            return await RunPingExeAsync(target, addresses[0], seconds, onTick, ct);
-
-        // Ни один способ не прошёл: ICMP заблокирован в системе.
         return new LatencyProbeResult
         {
             Target = target,
-            Sent = seconds,
+            Sent = 0,
             Received = 0,
             Method = ProbeMethod.Blocked,
             SpikeThresholdMs = spikeThresholdMs
@@ -204,53 +215,7 @@ public static class LatencyProbe
         return Build(target, sent, samples, spikeThresholdMs, ProbeMethod.DotNetIcmp);
     }
 
-    // ------------------------------------------------------------ способ 2
-    private static async Task<Attempt> TryPingExeAsync(IPAddress address, CancellationToken ct)
-    {
-        var output = await RunProcessAsync("ping.exe", $"-n 1 -w 2000 {address}", ct);
-        if (output is null) return new Attempt(false, 0);
-
-        return new Attempt(true, 0);
-    }
-
-    /// <summary>
-    /// Замер через ping.exe. Русская/любая локализация не мешает: ориентируемся
-    /// на "TTL=", который присутствует в выводе ping на всех языках, и на код возврата.
-    /// Задержку в миллисекундах при этом получить нельзя — только факт ответа.
-    /// </summary>
-    private static async Task<LatencyProbeResult> RunPingExeAsync(
-        string target, IPAddress address, int seconds, Action<int, int>? onTick, CancellationToken ct)
-    {
-        var received = 0;
-        var sent = 0;
-
-        for (var i = 0; i < seconds && !ct.IsCancellationRequested; i++)
-        {
-            sent++;
-            var output = await RunProcessAsync("ping.exe", $"-n 1 -w 1500 {address}", ct);
-            if (output is not null && output.Contains("TTL=", StringComparison.OrdinalIgnoreCase))
-                received++;
-
-            onTick?.Invoke(i + 1, seconds);
-
-            if (i < seconds - 1)
-            {
-                try { await Task.Delay(1000, ct); }
-                catch (TaskCanceledException) { break; }
-            }
-        }
-
-        return new LatencyProbeResult
-        {
-            Target = target,
-            Method = ProbeMethod.PingExe,
-            Sent = sent,
-            Received = received,
-            SpikeThresholdMs = 0
-        };
-    }
-
-    // ------------------------------------------------------------- сборка
+    // ------------------------------------------------------------ сборка
     private static LatencyProbeResult Build(
         string target, int sent, List<double> samples, double spikeThresholdMs, ProbeMethod method)
     {

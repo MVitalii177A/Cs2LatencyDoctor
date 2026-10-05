@@ -63,6 +63,13 @@ public sealed class UndoJournal
     }
 
     /// <summary>
+    /// Переменная окружения, которая жёстко задаёт папку данных.
+    /// Нужна потому, что при запуске от администратора через UAC профиль меняется:
+    /// без этого журнал уехал бы в папку другого пользователя, и откат бы не нашёл его.
+    /// </summary>
+    public const string DataDirectoryVariable = "CS2LATENCY_DATA_DIR";
+
+    /// <summary>
     /// Подобрать место для журнала. Пробуем по очереди, потому что папка пользователя
     /// может быть недоступна (ограниченные права, политики, защищённый профиль).
     /// </summary>
@@ -71,6 +78,16 @@ public sealed class UndoJournal
         var fileName = "undo-journal.json";
 
         var candidates = new List<string>();
+
+        // Явно заданная папка имеет высший приоритет: так родительский и дочерний
+        // (повышенный) процессы работают с одним и тем же журналом.
+        try
+        {
+            var explicitDirectory = Environment.GetEnvironmentVariable(DataDirectoryVariable);
+            if (!string.IsNullOrWhiteSpace(explicitDirectory))
+                candidates.Add(explicitDirectory);
+        }
+        catch { /* нет переменной */ }
 
         try
         {
@@ -85,6 +102,14 @@ public sealed class UndoJournal
             var appData = Environment.GetEnvironmentVariable("APPDATA");
             if (!string.IsNullOrWhiteSpace(appData))
                 candidates.Add(Path.Combine(appData, "Cs2LatencyDoctor"));
+        }
+        catch { /* нет переменной */ }
+
+        try
+        {
+            var programData = Environment.GetEnvironmentVariable("ProgramData");
+            if (!string.IsNullOrWhiteSpace(programData))
+                candidates.Add(Path.Combine(programData, "Cs2LatencyDoctor"));
         }
         catch { /* нет переменной */ }
 

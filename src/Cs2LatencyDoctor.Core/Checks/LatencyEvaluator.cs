@@ -50,12 +50,16 @@ public static class LatencyEvaluator
     {
         var title = $"Задержка {where}";
 
-        if (probe.IsInconclusive)
+        if (probe.IsNoResponse)
         {
-            return CheckResult.Skipped(id, title,
-                "ICMP-запросы блокируются в системе, поэтому задержку измерить не удалось. " +
-                "Так бывает из-за фаервола, антивируса или политики сети — на саму игру это не влияет. " +
-                "Замер можно повторить, разрешив ICMP (эхо-запросы) в фаерволе.");
+            var noResponseReason = probe.Method == ProbeMethod.PingExe
+                ? "Узел не ответил ни на один запрос. Скорее всего он закрыт фаерволом — " +
+                  "это обычное поведение роутеров и серверов, а не признак проблемы. " +
+                  "Судить о задержке по этому замеру нельзя."
+                : "ICMP-запросы блокируются в системе, поэтому задержку измерить не удалось. " +
+                  "Так бывает из-за фаервола, антивируса или политики сети — на саму игру это не влияет.";
+
+            return CheckResult.Skipped(id, title, noResponseReason);
         }
 
         if (probe.Method == ProbeMethod.PingExe)
@@ -67,6 +71,59 @@ public static class LatencyEvaluator
                     "но потери пакетов видны и они реальны. " + why)
                 : CheckResult.Ok(id, title,
                     lossText + ". Точную задержку измерить не удалось, но потерь нет.", why);
+        }
+
+        // Замер через TCP-подключение: задержка настоящая, только способ другой.
+        // ICMP в системе заблокирован, поэтому пошли по тому же пути, что и игровой трафик.
+        if (probe.Method == ProbeMethod.TcpConnect)
+        {
+            var detailText =
+                $"{probe.Received}/{probe.Sent} подключений · медиана {probe.MedianMs:0.#} мс · " +
+                $"макс {probe.MaxMs:0.#} мс · отклонение ±{probe.StdDevMs:0.##} мс · " +
+                $"всплесков {probe.Spikes} ({probe.SpikePercent:0.#}%)";
+            if (!string.IsNullOrEmpty(probe.Detail)) detailText += $" · {probe.Detail}";
+
+            var metricsTcp = new Dictionary<string, double>
+            {
+                ["median_ms"] = probe.MedianMs,
+                ["max_ms"] = probe.MaxMs,
+                ["stddev_ms"] = probe.StdDevMs,
+                ["spike_percent"] = probe.SpikePercent,
+                ["loss_percent"] = probe.LossPercent
+            };
+
+            Severity severityTcp;
+            if (probe.LossPercent > ProblemLossPercent) severityTcp = Severity.Problem;
+            else if (probe.SpikePercent > ProblemSpikePercent || probe.StdDevMs > ProblemStdDevMs)
+                severityTcp = Severity.Problem;
+            else if (probe.SpikePercent > WarnSpikePercent || probe.StdDevMs > WarnStdDevMs)
+                severityTcp = Severity.Warning;
+            else severityTcp = Severity.Ok;
+
+            var noteTcp = "Замер сделан TCP-подключением: ICMP в системе недоступен, " +
+                          "а TCP идёт тем же путём, что и игровой трафик.";
+
+            if (severityTcp == Severity.Ok)
+            {
+                return new CheckResult
+                {
+                    Id = id, Title = title, Severity = Severity.Ok,
+                    Detail = detailText + " Ровно, без всплесков. " + noteTcp,
+                    Why = why, Metrics = metricsTcp
+                };
+            }
+
+            var reasonTcp = probe.LossPercent > ProblemLossPercent
+                ? $"Не удалось подключиться в {probe.LossPercent:0.#}% попыток — это прямые обрывы связи."
+                : $"Разброс задержки ±{probe.StdDevMs:0.##} мс и {probe.Spikes} всплесков. " +
+                  "Именно неровность, а не среднее значение, ощущается как «пули не регистрируются».";
+
+            return new CheckResult
+            {
+                Id = id, Title = title, Severity = severityTcp,
+                Detail = detailText + " — " + reasonTcp + " " + noteTcp,
+                Why = why, Metrics = metricsTcp
+            };
         }
 
         var detail =

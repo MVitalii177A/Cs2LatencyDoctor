@@ -62,6 +62,42 @@ public static class SelfTests
         Received = 18      // 40% потерь
     };
 
+    /// <summary>Замер через TCP-подключение: задержка настоящая, ICMP при этом заблокирован.</summary>
+    public static LatencyProbeResult RecordedTcpConnectJittery() => new()
+    {
+        Target = "1.1.1.1",
+        Method = ProbeMethod.TcpConnect,
+        Detail = "порт 443",
+        Sent = 60,
+        Received = 60,
+        MinMs = 29,
+        MedianMs = 30,
+        AverageMs = 33.5,
+        MaxMs = 78,
+        StdDevMs = 9.4,
+        // 5 выбросов из 60 при медиане 30: порог 45 (1.5x медианы) их ловит
+        Spikes = 5,
+        SpikeThresholdMs = 45,
+        Samples = BuildTcpSamples()
+    };
+
+    private static List<double> BuildTcpSamples()
+    {
+        var samples = new List<double>(60);
+        for (var i = 0; i < 60; i++)
+        {
+            samples.Add(i switch
+            {
+                12 or 13 => 78.0,
+                31 => 62.0,
+                44 or 45 => 55.0,
+                _ => 29.0 + (i % 3)
+            });
+        }
+
+        return samples;
+    }
+
     public static IReadOnlyList<SelfTestCase> All() => new[]
     {
         new SelfTestCase(
@@ -93,6 +129,12 @@ public static class SelfTests
             "сценарий обрыва связи",
             RecordedPingExeWithLoss(), Severity.Problem,
             "потери должны быть замечены"),
+
+        new SelfTestCase(
+            "TCP-замер: ICMP заблокирован, но пила видна",
+            "сценарий машины с закрытым ICMP: 60 подключений, выбросы до 78 мс",
+            RecordedTcpConnectJittery(), Severity.Problem,
+            "TCP-замер должен работать вместо ICMP и находить неровность"),
     };
 
     /// <summary>Прогнать все сценарии и вернуть результаты проверки.</summary>
