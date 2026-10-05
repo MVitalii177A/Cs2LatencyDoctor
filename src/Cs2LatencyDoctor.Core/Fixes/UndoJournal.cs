@@ -15,6 +15,12 @@ public sealed class JournalEntry
     /// <summary>Где именно: описание адаптера, путь ветки реестра или GUID настройки питания.</summary>
     public required string Location { get; init; }
 
+    /// <summary>
+    /// Ветка реестра для записей вида registryKeyword и registryValue.
+    /// По умолчанию LocalMachine: все штатные правки идут туда.
+    /// </summary>
+    public string Hive { get; init; } = "LocalMachine";
+
     /// <summary>Имя параметра (keyword драйвера или имя значения реестра).</summary>
     public required string Name { get; init; }
 

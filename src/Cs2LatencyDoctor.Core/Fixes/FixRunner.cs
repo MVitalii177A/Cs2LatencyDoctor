@@ -1,3 +1,5 @@
+using Cs2LatencyDoctor.Core.Windows;
+
 namespace Cs2LatencyDoctor.Core.Fixes;
 
 /// <summary>Итог применения или отката исправлений.</summary>
@@ -125,25 +127,30 @@ public sealed class FixRunner
             context.Progress($"Возвращаю: {entry.Title}…");
 
             var fix = reverter._fixes.FirstOrDefault(f => f.Id == entry.FixId);
-            if (fix is null)
-            {
-                results.Add(FixResult.Failed(entry.FixId, entry.Title,
-                    "Не найдена реализация отката для этого исправления"));
-                continue;
-            }
 
             try
             {
-                if (fix.Revert(entry, context))
+                // Сначала пробуем обработчик исправления: он знает свои тонкости.
+                // Если обработчика нет (журнал от другой версии программы) —
+                // откатываем по данным самой записи, чтобы правка не осталась навсегда.
+                var ok = fix is not null
+                    ? fix.Revert(entry, context)
+                    : RevertFromJournalData(entry);
+
+                if (ok)
                 {
                     reverted.Add(entry);
                     results.Add(FixResult.Applied(entry.FixId, entry.Title,
-                        $"Возвращено значение {entry.OldValue}", new[] { entry }));
+                        $"Возвращено значение {entry.OldValue}" +
+                        (fix is null ? " (по данным журнала)" : string.Empty),
+                        new[] { entry }));
                 }
                 else
                 {
                     results.Add(FixResult.Failed(entry.FixId, entry.Title,
-                        "Откат не подтвердился — проверьте параметр вручную"));
+                        fix is null
+                            ? "Не удалось вернуть по данным журнала — проверьте параметр вручную"
+                            : "Откат не подтвердился — проверьте параметр вручную"));
                 }
             }
             catch (Exception ex)
@@ -165,5 +172,83 @@ public sealed class FixRunner
         }
 
         return new FixReport { Results = results, JournalPath = journal.FilePath };
+    }
+
+    /// <summary>
+    /// Откат по данным самой записи журнала — без обработчика исправления.
+    ///
+    /// Зачем: журнал хранит, где именно и какое значение было до правки. Этого
+    /// достаточно, чтобы вернуть настройку, даже если программа обновилась и
+    /// исправление переименовали. Иначе такая запись застряла бы в журнале навсегда.
+    /// </summary>
+    public static bool RevertFromJournalData(JournalEntry entry)
+    {
+        return entry.Kind switch
+        {
+            // Ключевое слово драйвера сетевой карты и обычное значение реестра
+            // возвращаются одинаково: ветка, путь и имя параметра есть в записи.
+            "registryKeyword" or "registryValue" =>
+                string.IsNullOrEmpty(entry.OldValue)
+                    ? RegistryValueReader.DeleteValue(ParseHive(entry.Hive), entry.Location, entry.Name)
+                    : RegistryValueReader.WriteValue(ParseHive(entry.Hive), entry.Location, entry.Name, entry.OldValue),
+
+            // Настройка электропитания: значение возвращается через powercfg.
+            "powercfg" => RevertPowerCfg(entry),
+
+            // Файл настроек игры: есть резервная копия — восстанавливаем её.
+            "cs2VideoFile" => RevertCs2VideoFile(entry),
+
+            _ => false
+        };
+    }
+
+    /// <summary>Разобрать название ветки реестра из записи журнала.</summary>
+    private static Microsoft.Win32.RegistryHive ParseHive(string? hive) =>
+        string.Equals(hive, "CurrentUser", StringComparison.OrdinalIgnoreCase)
+            ? Microsoft.Win32.RegistryHive.CurrentUser
+            : Microsoft.Win32.RegistryHive.LocalMachine;
+
+    private static bool RevertPowerCfg(JournalEntry entry)
+    {
+        try
+        {
+            var parts = entry.Location.Split('/');
+            if (parts.Length != 2) return false;
+
+            var argument = entry.Name == "AC" ? "/setacvalueindex" : "/setdcvalueindex";
+            var command = $"{argument} SCHEME_CURRENT {parts[0]} {parts[1]} {entry.OldValue}";
+
+            var output = Windows.LatencyProbe
+                .RunProcessAsync("powercfg.exe", command, CancellationToken.None)
+                .GetAwaiter().GetResult();
+
+            if (output is null) return false;
+
+            Windows.LatencyProbe
+                .RunProcessAsync("powercfg.exe", "/setactive SCHEME_CURRENT", CancellationToken.None)
+                .GetAwaiter().GetResult();
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool RevertCs2VideoFile(JournalEntry entry)
+    {
+        try
+        {
+            var backup = entry.Location + ".cs2latencydoc-backup";
+            if (!File.Exists(backup)) return false;
+
+            File.Copy(backup, entry.Location, overwrite: true);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

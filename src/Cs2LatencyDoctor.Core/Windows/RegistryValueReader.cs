@@ -57,29 +57,44 @@ public static class RegistryValueReader
         return value?.ToString();
     }
 
-    /// <summary>Записать значение, сохранив прежний тип (строка/DWORD).</summary>
+    /// <summary>
+    /// Записать значение, сохранив прежний тип (строка/DWORD).
+    ///
+    /// Если ключа нет — создаём его. Это важно для отката: настройка могла
+    /// быть удалена другим приложением, и тогда молчаливый отказ означал бы,
+    /// что вернуть её уже нельзя.
+    /// </summary>
     public static bool WriteValue(RegistryHive hive, string subKey, string name, string value)
     {
         try
         {
             using var baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Default);
-            using var key = baseKey.OpenSubKey(subKey, writable: true);
-            if (key is null) return false;
 
-            // Числовые значения в этих ветках обычно хранятся строками. Если исходный
-            // тип был DWORD — пишем DWORD, иначе строка.
-            var existing = key.GetValue(name);
-            if (existing is int)
+            var key = baseKey.OpenSubKey(subKey, writable: true);
+
+            if (key is null)
             {
-                if (!int.TryParse(value, out var number)) return false;
-                key.SetValue(name, number, RegistryValueKind.DWord);
-            }
-            else
-            {
-                key.SetValue(name, value, RegistryValueKind.String);
+                key = baseKey.CreateSubKey(subKey, writable: true);
+                if (key is null) return false;
             }
 
-            return true;
+            using (key)
+            {
+                // Числовые значения в этих ветках обычно хранятся строками. Если исходный
+                // тип был DWORD — пишем DWORD, иначе строка.
+                var existing = key.GetValue(name);
+                if (existing is int)
+                {
+                    if (!int.TryParse(value, out var number)) return false;
+                    key.SetValue(name, number, RegistryValueKind.DWord);
+                }
+                else
+                {
+                    key.SetValue(name, value, RegistryValueKind.String);
+                }
+
+                return true;
+            }
         }
         catch
         {

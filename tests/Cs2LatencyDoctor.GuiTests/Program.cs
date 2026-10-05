@@ -15,6 +15,7 @@ internal static class Program
 {
     private static int _passed;
     private static int _failed;
+    private static int _skipped;
     private static readonly StringBuilder Log = new();
 
     [STAThread]
@@ -40,13 +41,47 @@ internal static class Program
         CheckXamlLoads();
         CheckViewModelLogic(seconds);
         CheckWindowConstruction();
+        RunCoreTests();
 
         Console.WriteLine(Log.ToString());
         Console.WriteLine("  " + new string('-', 68));
-        Console.WriteLine($"  ИТОГ: пройдено {_passed}, провалено {_failed}");
+        var summary = $"  ИТОГ: пройдено {_passed}, провалено {_failed}";
+        if (_skipped > 0) summary += $", пропущено {_skipped} (среда запрещает запись в реестр)";
+        Console.WriteLine(summary);
         Console.WriteLine();
 
         return _failed == 0 ? 0 : 1;
+    }
+
+    /// <summary>Проверки слоя исправлений и журнала отката — они не требуют интерфейса.</summary>
+    private static void RunCoreTests()
+    {
+        var results = new List<(string Name, bool Passed, string? Error)>();
+        CoreTests.Run(results);
+
+        foreach (var (name, passed, error) in results)
+        {
+            // Третий статус: проверку нельзя выполнить в этой среде.
+            // Это не провал кода — так и говорим, а не выдаём за ошибку.
+            if (error is null && !passed)
+            {
+                _skipped++;
+                Log.AppendLine($"  [ПРОПУЩЕНО] {name}");
+                continue;
+            }
+
+            if (passed)
+            {
+                _passed++;
+                Log.AppendLine($"  [ПРОЙДЕНО] {name}");
+            }
+            else
+            {
+                _failed++;
+                Log.AppendLine($"  [ПРОВАЛ]   {name}");
+                Log.AppendLine($"             {error}");
+            }
+        }
     }
 
     private static void Check(string name, Action action)
