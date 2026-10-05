@@ -82,4 +82,22 @@ public partial class MainWindow : Window
     {
         _viewModel.ResumeBackground();
     }
+
+    /// <summary>
+    /// Кнопка благодарности. Программа бесплатная, поэтому это не «покупка»
+    /// и не напоминание при запуске — только окно с реквизитами по желанию.
+    /// </summary>
+    private void OnDonateClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var window = new DonationWindow { Owner = this };
+            window.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Не удалось открыть окно благодарности: " + ex.Message,
+                "Поблагодарить разработчиков", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
 }

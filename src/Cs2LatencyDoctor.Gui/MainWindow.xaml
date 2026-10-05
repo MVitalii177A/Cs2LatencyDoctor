@@ -94,6 +94,9 @@
                     Margin="8,0,0,0" Click="OnRevertClick" IsEnabled="{Binding IsIdle}"/>
             <Button Content="Перезапустить от администратора" Style="{StaticResource BaseButton}"
                     Margin="8,0,0,0" Click="OnElevateClick"/>
+            <Button Content="♥ Поблагодарить" Style="{StaticResource BaseButton}"
+                    Margin="8,0,0,0" Click="OnDonateClick"
+                    ToolTip="Программа бесплатная. Здесь реквизиты, если захотите поддержать разработку."/>
 
             <TextBlock Text="Замер, сек:" Foreground="{StaticResource MutedBrush}"
                        VerticalAlignment="Center" Margin="18,0,6,0" FontSize="12"/>
