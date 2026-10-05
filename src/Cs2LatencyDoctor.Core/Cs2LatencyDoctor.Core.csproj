@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- Инструмент только для Windows: реестр, WMI, powercfg. -->
+    <!-- Инструмент только для Windows: реестр, сетевые интерфейсы, powercfg. -->
     <TargetFramework>net10.0-windows</TargetFramework>
     <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -11,8 +11,14 @@
     <RootNamespace>Cs2LatencyDoctor.Core</RootNamespace>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="System.Management" Version="10.0.12" />
-  </ItemGroup>
+  <!--
+    Внешних пакетов нет намеренно. Раньше здесь был System.Management, чтобы читать
+    сетевые адаптеры через WMI. Это добавляло хрупкость: там, где служба WMI
+    недоступна или сборка не загрузилась, проверка сетевой карты просто не работала,
+    а пользователь видел непонятную ошибку про файл сборки.
+
+    Сейчас список адаптеров берётся из встроенного System.Net.NetworkInformation,
+    а настройки драйвера — из реестра. Внешние зависимости не нужны вообще.
+  -->
 
 </Project>

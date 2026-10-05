@@ -97,9 +97,11 @@
 
             <TextBlock Text="Замер, сек:" Foreground="{StaticResource MutedBrush}"
                        VerticalAlignment="Center" Margin="18,0,6,0" FontSize="12"/>
-            <TextBox Text="{Binding ProbeSeconds}" Width="48" Background="#2A2C34"
+            <TextBox Text="{Binding ProbeSeconds}" Width="44" Background="#2A2C34"
                      Foreground="#E6E7EB" BorderThickness="0" Padding="8,6"
                      FontSize="13" VerticalContentAlignment="Center"/>
+            <TextBlock Text="(3–60)" Foreground="#6E6E77" VerticalAlignment="Center"
+                       Margin="6,0,0,0" FontSize="11"/>
         </StackPanel>
 
         <!-- Основная область -->
@@ -236,10 +238,11 @@
         <!-- Строка состояния -->
         <Border Grid.Row="3" Margin="0,14,0,0" Background="#1C1D23" CornerRadius="8" Padding="12,8">
             <StackPanel Orientation="Horizontal">
-                <ProgressBar Width="120" Height="4" IsIndeterminate="True"
-                             Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}"
-                             Foreground="{StaticResource AccentBrush}" Background="#2A2C34"
-                             VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <!-- Намеренно без ProgressBar: анимация «бегающей полоски» постоянно
+                     занимает поток интерфейса, и во время проверки окно начинает тормозить. -->
+                <TextBlock Text="⏳" Foreground="{StaticResource AccentBrush}" FontSize="13"
+                           VerticalAlignment="Center" Margin="0,0,8,0"
+                           Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}"/>
                 <TextBlock Text="{Binding Status}" Foreground="{StaticResource MutedBrush}"
                            FontSize="12" VerticalAlignment="Center"/>
             </StackPanel>

@@ -90,11 +90,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool IsIdle => !IsBusy;
 
-    private int _probeSeconds = 15;
+    private int _probeSeconds = 8;
     public int ProbeSeconds
     {
         get => _probeSeconds;
-        set { _probeSeconds = Math.Clamp(value, 5, 60); OnPropertyChanged(); }
+        set { _probeSeconds = Math.Clamp(value, 3, 60); OnPropertyChanged(); }
     }
 
     public bool IsAdministrator { get; private set; }
@@ -174,17 +174,56 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Findings.Clear();
         Summary = "Идёт проверка…";
 
+        // Прогресс приходит из фоновых потоков очень часто. Если передавать его
+        // в интерфейс на каждое сообщение, очередь потока интерфейса забивается,
+        // и окно перестаёт реагировать на мышь и кнопку закрытия. Поэтому копим
+        // последнее сообщение и показываем его по таймеру, а не на каждое событие.
+        var pendingStatus = "Начинаю проверку…";
+        var pendingLock = new object();
+
+        void ReportProgress(string message)
+        {
+            lock (pendingLock) pendingStatus = message;
+        }
+
+        var progressTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+
+        progressTimer.Tick += (_, _) =>
+        {
+            string message;
+            lock (pendingLock) message = pendingStatus;
+
+            if (!string.Equals(Status, message, StringComparison.Ordinal))
+                Status = message;
+        };
+
+        progressTimer.Start();
+
         try
         {
-            var context = new DiagnosticContext
+            // ВАЖНО: вся диагностика выполняется внутри Task.Run, то есть в фоновом потоке.
+            //
+            // Почему так, а не просто await: до первого настоящего await проверки успевают
+            // сделать много синхронной работы — обход сетевых адаптеров через WMI, чтение
+            // реестра, поиск папок CS2. WMI в Windows 10 умеет отвечать десятками секунд,
+            // и всё это время поток интерфейса остаётся занят: окно не двигается,
+            // не закрывается и не перерисовывается. Именно это выглядело как зависание.
+            var report = await Task.Run(async () =>
             {
-                IsAdministrator = IsAdministrator,
-                ProbeSeconds = ProbeSeconds,
-                OnProgress = message => Status = message
-            };
+                var context = new DiagnosticContext
+                {
+                    IsAdministrator = IsAdministrator,
+                    ProbeSeconds = ProbeSeconds,
+                    OnProgress = ReportProgress
+                };
 
-            var runner = DiagnosticRunner.CreateDefault(ProbeSeconds);
-            var report = await runner.RunAsync(context);
+                return await DiagnosticRunner.CreateDefault(ProbeSeconds)
+                    .RunAsync(context)
+                    .ConfigureAwait(false);
+            }).ConfigureAwait(false);
 
             // Замер пишем в локальную историю до показа результатов:
             // так сводка «что изменилось» сравнивает с прошлыми запусками.
@@ -251,6 +290,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
+            progressTimer.Stop();
             IsBusy = false;
         }
     }
@@ -272,52 +312,57 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         IsBusy = true;
+        Status = "Применяю исправления…";
 
-        try
+        // Работа идёт в фоновом потоке: остановка служб и перезапуск адаптера
+        // занимают секунды, и в потоке интерфейса окно бы замерло.
+        Task.Run(() =>
         {
-            Status = "Применяю исправления…";
-
-            var context = new DiagnosticContext
+            try
             {
-                IsAdministrator = IsAdministrator,
-                OnProgress = message => Status = message
-            };
+                var context = new DiagnosticContext
+                {
+                    IsAdministrator = IsAdministrator,
+                    OnProgress = message => Status = message
+                };
 
-            var journal = new UndoJournal();
-            if (!journal.IsFileReady)
-            {
-                ApplyResult = "Не удалось создать журнал отката. Изменения не применялись: " +
-                              "без журнала вернуть настройки назад невозможно.";
-                return;
+                var journal = new UndoJournal();
+                if (!journal.IsFileReady)
+                {
+                    ApplyResult = "Не удалось создать журнал отката. Изменения не применялись: " +
+                                  "без журнала вернуть настройки назад невозможно.";
+                    return;
+                }
+
+                var report = FixRunner.CreateDefault(FixSelection.Safe).ApplyAll(context, journal);
+
+                ApplyResult = string.Join(Environment.NewLine, report.Results.Select(r => r.Outcome switch
+                {
+                    FixOutcome.Applied => "✓ " + r.Title + ": " + r.Message,
+                    FixOutcome.AlreadyOk => "• " + r.Title + ": " + r.Message,
+                    FixOutcome.Skipped => "— " + r.Title + ": " + r.Message,
+                    _ => "✗ " + r.Title + ": " + r.Message
+                })) +
+                Environment.NewLine + Environment.NewLine +
+                "Журнал отката: " + report.JournalPathText +
+                Environment.NewLine + "Вернуть всё назад можно кнопкой «Откатить изменения».";
+
+                Status = report.Summary;
             }
-
-            var report = FixRunner.CreateDefault(FixSelection.Safe).ApplyAll(context, journal);
-
-            var lines = report.Results.Select(r => r.Outcome switch
+            catch (Exception ex)
             {
-                FixOutcome.Applied => "✓ " + r.Title + ": " + r.Message,
-                FixOutcome.AlreadyOk => "• " + r.Title + ": " + r.Message,
-                FixOutcome.Skipped => "— " + r.Title + ": " + r.Message,
-                _ => "✗ " + r.Title + ": " + r.Message
-            });
-
-            ApplyResult = string.Join(Environment.NewLine, lines) +
-                          Environment.NewLine + Environment.NewLine +
-                          "Журнал отката: " + report.JournalPathText +
-                          Environment.NewLine + "Вернуть всё назад можно кнопкой «Откатить изменения».";
-
-            Status = report.Summary;
-        }
-        catch (Exception ex)
-        {
-            ApplyResult = "Ошибка при применении: " + ex.Message;
-        }
-        finally
-        {
-            IsBusy = false;
-            OnPropertyChanged(nameof(ApplyResult));
-            RefreshBackground();
-        }
+                ApplyResult = "Ошибка при применении: " + ex.Message;
+            }
+            finally
+            {
+                Ui(() =>
+                {
+                    IsBusy = false;
+                    OnPropertyChanged(nameof(ApplyResult));
+                });
+                RefreshBackground();
+            }
+        });
     }
 
     public void RevertFixes()
@@ -332,41 +377,46 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         IsBusy = true;
+        Status = "Возвращаю настройки…";
 
-        try
+        Task.Run(() =>
         {
-            var journal = new UndoJournal();
-            if (journal.Entries.Count == 0)
+            try
             {
-                ApplyResult = "Откатывать нечего: программа ещё ничего не меняла.";
-                return;
+                var journal = new UndoJournal();
+                if (journal.Entries.Count == 0)
+                {
+                    ApplyResult = "Откатывать нечего: программа ещё ничего не меняла.";
+                    return;
+                }
+
+                var context = new DiagnosticContext
+                {
+                    IsAdministrator = IsAdministrator,
+                    OnProgress = message => Status = message
+                };
+
+                var report = FixRunner.RevertAll(context, journal);
+
+                ApplyResult = string.Join(Environment.NewLine, report.Results.Select(r =>
+                    (r.Outcome == FixOutcome.Applied ? "✓ " : "✗ ") + r.Title + ": " + r.Message)) +
+                    Environment.NewLine + Environment.NewLine + report.Summary;
+
+                Status = "Откат выполнен";
             }
-
-            Status = "Возвращаю настройки…";
-
-            var context = new DiagnosticContext
+            catch (Exception ex)
             {
-                IsAdministrator = IsAdministrator,
-                OnProgress = message => Status = message
-            };
-
-            var report = FixRunner.RevertAll(context, journal);
-
-            ApplyResult = string.Join(Environment.NewLine, report.Results.Select(r =>
-                (r.Outcome == FixOutcome.Applied ? "✓ " : "✗ ") + r.Title + ": " + r.Message)) +
-                Environment.NewLine + Environment.NewLine + report.Summary;
-
-            Status = "Откат выполнен";
-        }
-        catch (Exception ex)
-        {
-            ApplyResult = "Ошибка при откате: " + ex.Message;
-        }
-        finally
-        {
-            IsBusy = false;
-            OnPropertyChanged(nameof(ApplyResult));
-        }
+                ApplyResult = "Ошибка при откате: " + ex.Message;
+            }
+            finally
+            {
+                Ui(() =>
+                {
+                    IsBusy = false;
+                    OnPropertyChanged(nameof(ApplyResult));
+                });
+            }
+        });
     }
 
     // -------------------------------------------------------------- пауза фона
@@ -433,13 +483,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var dispatcher = Application.Current?.Dispatcher;
 
         // Интерфейса может не быть вовсе (тестовый или консольный запуск).
-        if (dispatcher is null || dispatcher.CheckAccess())
+        if (dispatcher is null)
         {
             action();
             return;
         }
 
-        dispatcher.Invoke(action);
+        if (dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        // BeginInvoke, а не Invoke: он ставит задачу в очередь и сразу возвращает
+        // управление. Invoke блокировал бы фоновый поток до обработки очереди,
+        // а если очередь забита — окно перестаёт отвечать на мышь и закрытие.
+        dispatcher.BeginInvoke(action);
     }
 }
 

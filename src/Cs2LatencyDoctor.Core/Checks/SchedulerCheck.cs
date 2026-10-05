@@ -1,4 +1,3 @@
-using System.Management;
 using Cs2LatencyDoctor.Core.Windows;
 
 namespace Cs2LatencyDoctor.Core.Checks;
