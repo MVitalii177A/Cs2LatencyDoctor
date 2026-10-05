@@ -17,7 +17,7 @@ public sealed class Cs2ConfigCheck : IDiagnosticCheck
         var results = new List<CheckResult>();
         context.Progress("Ищу установленную CS2…");
 
-        var install = Cs2Locator.Find();
+        var install = context.GetCs2Installation();
         if (install is null)
         {
             results.Add(CheckResult.Skipped(Id, Title,
@@ -31,8 +31,6 @@ public sealed class Cs2ConfigCheck : IDiagnosticCheck
             return Task.FromResult<IReadOnlyList<CheckResult>>(results);
         }
 
-        context.Cs2Path = install.GameFolder;
-        context.SteamUserId = install.SteamUserId;
         context.Progress("Читаю настройки видео CS2…");
 
         // --- Режим экрана ---
@@ -129,19 +127,56 @@ public sealed class Cs2ConfigCheck : IDiagnosticCheck
             }
 
             // --- Сглаживание: влияет на загрузку GPU, а значит на очередь кадров ---
-            if (video.Msaa >= 8)
+            if (video.Msaa >= 4)
             {
                 results.Add(CheckResult.Info(Id + ".msaa", "Сглаживание (MSAA)",
                     $"{video.Msaa}x",
-                    "Высокое сглаживание повышает время кадра и удлиняет очередь GPU. " +
-                    "В CS2 его обычно держат на 2x–4x или выключают ради максимального FPS.",
+                    "Сглаживание повышает время кадра. На 180 Гц запас времени на кадр всего 5.6 мс, " +
+                    "и сглаживание съедает его заметную часть.",
                     recommendation: "Программа не меняет настройки графики: это вопрос вашего вкуса " +
                     "и мощности видеокарты. Что делать: если FPS заметно ниже частоты монитора, " +
-                    "снизьте сглаживание до 2x или выключите в Настройки → Видео → " +
-                    "Multisampling Anti-Aliasing Mode."));
+                    "снизьте сглаживание до 2x или выключите — Настройки → Видео → " +
+                    "Multisampling Anti-Aliasing Mode. Если FPS и так выше частоты монитора, " +
+                    "менять ничего не нужно."));
+            }
+
+            // --- Соотношение сторон: частая причина чёрных полос или растянутой картинки ---
+            if (video.ResolutionWidth > 0 && video.ResolutionHeight > 0)
+            {
+                var aspect = (double)video.ResolutionWidth / video.ResolutionHeight;
+
+                if (Math.Abs(aspect - 16.0 / 9.0) > 0.02)
+                {
+                    results.Add(CheckResult.Info(Id + ".aspect", "Соотношение сторон",
+                        $"Разрешение {video.ResolutionWidth}x{video.ResolutionHeight} " +
+                        $"({DescribeAspect(aspect)}), а монитор 16:9",
+                        "Если разрешение в игре уже монитора, картинку растягивает видеокарта. " +
+                        "При настройке «сохранять пропорции» по краям появляются чёрные полосы, " +
+                        "при полноэкранном масштабировании картинка растягивается.",
+                        recommendation: "Программа не меняет масштабирование: оно живёт в панели " +
+                        "драйвера видеокарты, а не в файлах игры. Что делать: " +
+                        "1) откройте панель NVIDIA → «Регулировка размера и положения рабочего стола»; " +
+                        "2) режим масштабирования = «Полноэкранный» (для растянутой картинки) " +
+                        "или «Сохранение пропорций» (если хотите полосы); " +
+                        "3) «Выполнять масштабирование на» = GPU; " +
+                        "4) поставьте галочку «Переопределить режим масштабирования, установленный " +
+                        "играми и программами». Без масштабирования на GPU многие мониторы " +
+                        "оставляют полосы сами."));
+                }
             }
         }
 
         return Task.FromResult<IReadOnlyList<CheckResult>>(results);
     }
+
+    /// <summary>Человеческое название соотношения сторон — чтобы не читать десятичные дроби.</summary>
+    private static string DescribeAspect(double aspect) => aspect switch
+    {
+        var a when Math.Abs(a - 16.0 / 9.0) < 0.02 => "16:9",
+        var a when Math.Abs(a - 16.0 / 10.0) < 0.02 => "16:10",
+        var a when Math.Abs(a - 4.0 / 3.0) < 0.02 => "4:3, растянутое на широкий монитор",
+        var a when Math.Abs(a - 5.0 / 4.0) < 0.02 => "5:4, растянутое на широкий монитор",
+        var a when Math.Abs(a - 21.0 / 9.0) < 0.02 => "21:9",
+        _ => $"{aspect:0.##}:1"
+    };
 }

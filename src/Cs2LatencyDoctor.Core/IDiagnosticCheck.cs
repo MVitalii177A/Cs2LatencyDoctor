@@ -38,5 +38,28 @@ public sealed class DiagnosticContext
     /// <summary>SteamID пользователя (папка userdata), если нашли однозначно.</summary>
     public string? SteamUserId { get; set; }
 
+    private Windows.Cs2Installation? _installation;
+    private bool _installationResolved;
+
+    /// <summary>
+    /// Найденная установка CS2. Ищем один раз на всю диагностику: несколько проверок
+    /// работают с одними и теми же файлами игры, а повторный поиск по дискам — лишняя работа.
+    /// </summary>
+    public Windows.Cs2Installation? GetCs2Installation()
+    {
+        if (_installationResolved) return _installation;
+
+        _installationResolved = true;
+        _installation = Windows.Cs2Locator.Find();
+
+        if (_installation is not null)
+        {
+            Cs2Path = _installation.GameFolder;
+            SteamUserId = _installation.SteamUserId;
+        }
+
+        return _installation;
+    }
+
     public void Progress(string message) => OnProgress?.Invoke(message);
 }

@@ -51,7 +51,9 @@ public sealed class DiagnosticRunner
             .Add(new NetworkAdapterCheck())
             .Add(new PowerCheck())
             .Add(new SchedulerCheck())
-            .Add(new Cs2ConfigCheck());
+            .Add(new Cs2ConfigCheck())
+            .Add(new Cs2RefreshRateCheck())
+            .Add(new Cs2LaunchOptionsCheck());
     }
 
     public async Task<DiagnosticReport> RunAsync(DiagnosticContext context, CancellationToken ct = default)
