@@ -115,25 +115,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
     // --------------------------------------------------------------------- фон
     public void RefreshBackground()
     {
-        BackgroundApps.Clear();
-
-        foreach (var app in _background.Survey())
+        // Собираем список вне потока интерфейса, применяем — в потоке интерфейса.
+        var rows = _background.Survey().Select(app => new BackgroundRow
         {
-            BackgroundApps.Add(new BackgroundRow
-            {
-                Title = app.Title,
-                ProcessName = app.ProcessName,
-                Details = $"{app.ProcessCount} проц., {app.MemoryMb:0} МБ" +
-                          (app.OpenConnections > 0 ? $", соединений: {app.OpenConnections}" : string.Empty),
-                Reason = app.Reason,
-                Selected = app.Title.Contains("Торрент", StringComparison.OrdinalIgnoreCase)
-                           || app.Title.Contains("Dropbox", StringComparison.OrdinalIgnoreCase)
-            });
-        }
+            Title = app.Title,
+            ProcessName = app.ProcessName,
+            Details = $"{app.ProcessCount} проц., {app.MemoryMb:0} МБ" +
+                      (app.OpenConnections > 0 ? $", соединений: {app.OpenConnections}" : string.Empty),
+            Reason = app.Reason,
+            Selected = app.Title.Contains("Торрент", StringComparison.OrdinalIgnoreCase)
+                       || app.Title.Contains("Dropbox", StringComparison.OrdinalIgnoreCase)
+        }).ToList();
 
-        if (BackgroundApps.Count == 0)
+        if (rows.Count == 0)
         {
-            BackgroundApps.Add(new BackgroundRow
+            rows.Add(new BackgroundRow
             {
                 Title = "Ничего лишнего не запущено",
                 ProcessName = string.Empty,
@@ -141,6 +137,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 Reason = "Из списка известных фоновых программ сейчас ничего не работает — игре ничего не мешает."
             });
         }
+
+        Ui(() =>
+        {
+            BackgroundApps.Clear();
+            foreach (var row in rows) BackgroundApps.Add(row);
+        });
     }
 
     // -------------------------------------------------------------- диагностика
@@ -168,6 +170,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             // так сводка «что изменилось» сравнивает с прошлыми запусками.
             var historyBefore = report.CaptureAndSummarize(_history);
 
+            // Строки отчёта готовим вне потока интерфейса, а в список добавляем
+            // одним действием в потоке интерфейса — иначе WPF не даст менять коллекцию.
+            var rows = new List<FindingRow>();
+
             foreach (var result in report.Results)
             {
                 var (mark, color) = result.Severity switch
@@ -183,7 +189,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     ? string.Join("; ", result.Fixes.Select(f => f.Title))
                     : string.Empty;
 
-                Findings.Add(new FindingRow
+                rows.Add(new FindingRow
                 {
                     Mark = mark,
                     Title = result.Title,
@@ -193,6 +199,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     Color = color
                 });
             }
+
+            Ui(() =>
+            {
+                Findings.Clear();
+                foreach (var row in rows) Findings.Add(row);
+            });
 
             Summary = report.Summary;
             Status = $"Готово за {report.Duration.TotalSeconds:0.#} с";
@@ -382,11 +394,33 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+        Ui(() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name)));
+
+    /// <summary>
+    /// Выполнить действие в потоке интерфейса.
+    ///
+    /// Это не перестраховка: асинхронные проверки возвращаются из await на разных
+    /// потоках, а ObservableCollection, привязанный к списку, нельзя менять из чужого
+    /// потока — WPF в этом случае выбрасывает «CollectionView не поддерживает изменения
+    /// из потока, отличного от Dispatcher», и список просто перестаёт обновляться.
+    /// </summary>
+    private static void Ui(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+
+        // Интерфейса может не быть вовсе (тестовый или консольный запуск).
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        dispatcher.Invoke(action);
+    }
 }
 
 /// <summary>Сведения о правах и о том, как повысить их при необходимости.</summary>
-internal static class HostInfo
+public static class HostInfo
 {
     public static bool IsAdministrator()
     {
