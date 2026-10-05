@@ -1,8 +1,10 @@
 using System.Text;
 using System.Text.Json;
 using Cs2LatencyDoctor.Core;
+using Cs2LatencyDoctor.Core.Background;
 using Cs2LatencyDoctor.Core.Checks;
 using Cs2LatencyDoctor.Core.Fixes;
+using Cs2LatencyDoctor.Core.History;
 
 // Регистрируем старые кодировки: нужны для чтения вывода ping.exe и powercfg.
 AppBootstrap.Initialize();
@@ -18,6 +20,10 @@ var selfTest = false;
 var doFix = false;
 var doRevert = false;
 var doPlan = false;
+var showHistory = false;
+var doPause = false;
+var doResume = false;
+var assumeYes = false;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -42,6 +48,18 @@ for (var i = 0; i < args.Length; i++)
         case "--revert":
             doRevert = true;
             break;
+        case "--history":
+            showHistory = true;
+            break;
+        case "--pause":
+            doPause = true;
+            break;
+        case "--resume":
+            doResume = true;
+            break;
+        case "--yes" or "-y":
+            assumeYes = true;
+            break;
         case "--help" or "-h":
             showHelp = true;
             break;
@@ -52,6 +70,18 @@ for (var i = 0; i < args.Length; i++)
 if (selfTest)
 {
     return SelfTestCommand.Run();
+}
+
+// ------------------------------------------------------------------ история
+if (showHistory)
+{
+    return HistoryCommand.Run();
+}
+
+// ----------------------------------------------------------- пауза фоновых
+if (doPause || doResume)
+{
+    return PauseCommand.Run(doPause, doResume, assumeYes, jsonMode);
 }
 
 // ------------------------------------------------------- исправления и откат
@@ -70,15 +100,21 @@ if (showHelp)
           cs2latency --plan                      что можно исправить (ничего не меняет)
           cs2latency --fix                       применить безопасные исправления
           cs2latency --revert                    вернуть всё как было
+          cs2latency --history                   история замеров и что изменилось
+          cs2latency --pause                     поставить фоновые программы на паузу
+          cs2latency --resume                    вернуть фоновые программы обратно
           cs2latency --selftest                  проверить логику оценки на записанных данных
 
         Параметры:
           --seconds N   длительность замера сети в секундах (5..120, по умолчанию 20)
           --json        вывести отчёт в формате JSON
+          --yes         не спрашивать подтверждение (для --pause)
 
         Без параметров программа только читает состояние и показывает находки.
         При исправлении каждое изменённое значение сохраняется в журнал,
         поэтому --revert возвращает систему в исходное состояние.
+
+        История замеров хранится ТОЛЬКО на этом компьютере и никуда не отправляется.
 
         Для --fix и --revert нужны права администратора.
         """);
@@ -110,6 +146,11 @@ var report = await runner.RunAsync(context);
 
 if (!jsonMode) Console.Write("\r" + new string(' ', 66) + "\r");
 
+// Сохраняем замер в локальную историю: она нужна, чтобы показать человеку,
+// помогли ли правки. История не покидает компьютер.
+var historyStore = new HistoryStore();
+var historyBefore = report.CaptureAndSummarize(historyStore);
+
 // ------------------------------------------------------------------- вывод
 if (jsonMode)
 {
@@ -118,6 +159,12 @@ if (jsonMode)
         startedAt = report.StartedAt,
         durationSeconds = Math.Round(report.Duration.TotalSeconds, 1),
         summary = report.Summary,
+        history = new
+        {
+            totalRuns = historyBefore.TotalRuns,
+            runsWithProblems = historyBefore.RunsWithProblems,
+            text = historyBefore.Text
+        },
         results = report.Results.Select(r => new
         {
             id = r.Id,
@@ -132,6 +179,33 @@ if (jsonMode)
 
     Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
     return report.Count(Severity.Problem) > 0 ? 2 : 0;
+}
+
+// Если замеры уже были раньше — показываем, что изменилось с прошлого раза.
+if (historyBefore.HasHistory)
+{
+    Console.WriteLine("  " + new string('─', 66));
+    Console.WriteLine("  ЧТО ИЗМЕНИЛОСЬ С ПРОШЛЫХ ЗАМЕРОВ");
+    Console.WriteLine("  " + new string('─', 66));
+    Console.WriteLine("  " + historyBefore.Text);
+
+    foreach (var trend in historyBefore.Improved.Take(6))
+    {
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine($"    {trend.Title}: {MetricName(trend.MetricName)} " +
+                          $"{trend.FirstValue:0.#} → {trend.LastValue:0.#}  ({trend.Verdict})");
+        Console.ResetColor();
+    }
+
+    foreach (var trend in historyBefore.Worsened.Take(6))
+    {
+        Console.ForegroundColor = ConsoleColor.Red;
+        Console.WriteLine($"    {trend.Title}: {MetricName(trend.MetricName)} " +
+                          $"{trend.FirstValue:0.#} → {trend.LastValue:0.#}  ({trend.Verdict})");
+        Console.ResetColor();
+    }
+
+    Console.WriteLine();
 }
 
 Console.WriteLine("  " + new string('─', 66));
@@ -201,6 +275,16 @@ Console.WriteLine();
 return report.Count(Severity.Problem) > 0 ? 2 : 0;
 
 // ------------------------------------------------------------------ хелперы
+static string MetricName(string metric) => metric switch
+{
+    "spike_percent" => "всплески, %",
+    "loss_percent" => "потери, %",
+    "stddev_ms" => "разброс, мс",
+    "max_ms" => "максимум, мс",
+    "median_ms" => "медиана, мс",
+    _ => metric
+};
+
 static IEnumerable<string> Wrap(string text, int width)
 {
     var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -551,6 +635,215 @@ internal static class NetworkAdapterRestart
             return false;
         }
     }
+}
+
+/// <summary>
+/// Пауза фоновых программ на время игры и возврат их обратно.
+/// Останавливаются только процессы из списка кандидатов, есть защита от опасных имён.
+/// </summary>
+internal static class PauseCommand
+{
+    public static int Run(bool pause, bool resume, bool assumeYes, bool jsonMode)
+    {
+        var service = new BackgroundAppService();
+        var context = new DiagnosticContext
+        {
+            IsAdministrator = HostInfo.IsAdministrator(),
+            OnProgress = jsonMode ? null : m => Console.WriteLine("  " + m)
+        };
+
+        Console.WriteLine();
+
+        // ------------------------------------------------------------------ возврат
+        if (resume)
+        {
+            Console.WriteLine("  ВОЗВРАТ ФОНОВЫХ ПРОГРАММ");
+            Console.WriteLine("  " + new string('-', 70));
+
+            var state = service.GetCurrentState();
+            if (state.IsEmpty)
+            {
+                Console.WriteLine("  Ничего не стоит на паузе.");
+                Console.WriteLine();
+                return 0;
+            }
+
+            Console.WriteLine($"  На паузе с {state.CreatedAt:dd.MM.yyyy HH:mm}: {state.Apps.Count} программ");
+            foreach (var app in state.Apps)
+                Console.WriteLine($"    • {app.Title}");
+            Console.WriteLine();
+
+            var (restored, failed) = service.Resume(context);
+
+            Console.WriteLine();
+            Console.WriteLine($"  Возвращено: {restored}, не удалось запустить: {failed}");
+            if (failed > 0)
+                Console.WriteLine("  Запустите их вручную из меню Пуск.");
+
+            // Проверяем, что они действительно поднялись.
+            Console.WriteLine();
+            Console.WriteLine("  Проверка:");
+            foreach (var app in service.Survey())
+                Console.WriteLine($"    работает: {app.Title}");
+
+            Console.WriteLine();
+            return 0;
+        }
+
+        // -------------------------------------------------------------------- пауза
+        Console.WriteLine("  ПАУЗА ФОНОВЫХ ПРОГРАММ");
+        Console.WriteLine("  " + new string('-', 70));
+        Console.WriteLine();
+
+        var candidates = service.Survey();
+
+        if (candidates.Count == 0)
+        {
+            Console.WriteLine("  Из списка кандидатов сейчас ничего не запущено — ставить на паузу нечего.");
+            Console.WriteLine("  Это значит, что фоновые программы игре не мешают.");
+            Console.WriteLine();
+            return 0;
+        }
+
+        Console.WriteLine("  Найдено работающих программ из списка кандидатов:");
+        Console.WriteLine();
+        Console.WriteLine("    " + "Программа".PadRight(28) + "Проц.".PadRight(7) + "ОЗУ".PadRight(10) + "Причина");
+        Console.WriteLine("    " + new string('-', 68));
+
+        foreach (var app in candidates)
+        {
+            var memory = app.MemoryMb >= 1 ? $"{app.MemoryMb:0} МБ" : "< 1 МБ";
+            Console.WriteLine($"    {app.Title.PadRight(28)}{app.ProcessCount.ToString().PadRight(7)}" +
+                              $"{memory.PadRight(10)}{app.Reason}");
+        }
+
+        Console.WriteLine();
+        var totalMb = candidates.Sum(c => c.MemoryMb);
+        Console.WriteLine($"  Итого: {candidates.Count} программ, {totalMb:0} МБ памяти.");
+
+        var withConnections = candidates.Where(c => c.OpenConnections > 0).ToList();
+        if (withConnections.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("  Важно про сеть: постоянные соединения держат " +
+                              string.Join(", ", withConnections.Select(c => c.Title)) + ".");
+            Console.WriteLine("  Именно они создают фоновый сетевой шум во время матча.");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("  РАБОЧИЕ И СИСТЕМНЫЕ ПРОГРАММЫ НЕ ТРОГАЕМ — они защищены списком.");
+        Console.WriteLine();
+
+        if (!assumeYes)
+        {
+            Console.Write("  Остановить перечисленные программы? (y/n): ");
+            var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
+            if (answer is not ("y" or "yes" or "д" or "да"))
+            {
+                Console.WriteLine("  Отменено, ничего не изменено.");
+                Console.WriteLine();
+                return 0;
+            }
+        }
+
+        Console.WriteLine();
+        var state2 = service.Pause(candidates.Select(c => c.ProcessName), context);
+
+        Console.WriteLine();
+        Console.WriteLine($"  Остановлено программ: {state2.Apps.Count}");
+        Console.WriteLine($"  Состояние сохранено: {service.StatePathText}");
+        Console.WriteLine();
+        Console.WriteLine("  Запускайте CS2. После игры верните всё:  cs2latency --resume");
+        Console.WriteLine();
+
+        return 0;
+    }
+}
+
+/// <summary>
+/// История замеров: сколько раз запускали, что нашли и что изменилось.
+/// Всё это лежит в файле на компьютере пользователя и никуда не отправляется.
+/// </summary>
+internal static class HistoryCommand
+{
+    public static int Run()
+    {
+        var store = new HistoryStore();
+        var summary = store.Summarize();
+        var all = store.Read();
+
+        Console.WriteLine();
+        Console.WriteLine("  ИСТОРИЯ ЗАМЕРОВ (хранится только на этом компьютере)");
+        Console.WriteLine("  " + new string('-', 70));
+        Console.WriteLine("  Файл: " + store.FilePathText);
+        Console.WriteLine();
+
+        if (!summary.HasHistory)
+        {
+            Console.WriteLine("  История пуста. Запустите диагностику без параметров — замер запишется.");
+            Console.WriteLine();
+            return 0;
+        }
+
+        Console.WriteLine($"  Всего замеров: {summary.TotalRuns}");
+        Console.WriteLine($"  Первый: {summary.FirstRun:dd.MM.yyyy HH:mm}   Последний: {summary.LastRun:dd.MM.yyyy HH:mm}");
+        Console.WriteLine($"  Период: {(summary.DaysTracked <= 0 ? "меньше дня" : summary.DaysTracked + " дн.")}");
+        Console.WriteLine($"  Замеров с найденными проблемами: {summary.RunsWithProblems}");
+        Console.WriteLine();
+
+        if (summary.Improved.Count > 0 || summary.Worsened.Count > 0)
+        {
+            Console.WriteLine("  ИЗМЕНЕНИЯ МЕЖДУ ПЕРВЫМ И ПОСЛЕДНИМ ЗАМЕРОМ");
+            Console.WriteLine("  " + new string('-', 70));
+
+            foreach (var trend in summary.Improved)
+            {
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"    улучшилось  {trend.Title}: {MetricName(trend.MetricName)} " +
+                                  $"{trend.FirstValue:0.#} -> {trend.LastValue:0.#}");
+                Console.ResetColor();
+            }
+
+            foreach (var trend in summary.Worsened)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"    ухудшилось  {trend.Title}: {MetricName(trend.MetricName)} " +
+                                  $"{trend.FirstValue:0.#} -> {trend.LastValue:0.#}");
+                Console.ResetColor();
+            }
+
+            Console.WriteLine();
+        }
+        else
+        {
+            Console.WriteLine("  Существенных изменений между замерами не зафиксировано.");
+            Console.WriteLine();
+        }
+
+        Console.WriteLine("  ПОСЛЕДНИЕ ЗАМЕРЫ");
+        Console.WriteLine("  " + new string('-', 70));
+
+        foreach (var snapshot in all.TakeLast(10).Reverse())
+        {
+            var mark = snapshot.ProblemCount > 0 ? "!" : " ";
+            Console.WriteLine($"   {mark} {snapshot.Timestamp:dd.MM.yyyy HH:mm}  {snapshot.Summary}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("  Удалить историю: удалите файл, указанный выше.");
+        Console.WriteLine();
+
+        return 0;
+    }
+
+    private static string MetricName(string metric) => metric switch
+    {
+        "spike_percent" => "всплески, %",
+        "loss_percent" => "потери, %",
+        "stddev_ms" => "разброс, мс",
+        "max_ms" => "максимум, мс",
+        _ => metric
+    };
 }
 
 /// <summary>
