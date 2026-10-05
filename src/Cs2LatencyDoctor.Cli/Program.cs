@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Cs2LatencyDoctor.Core;
 using Cs2LatencyDoctor.Core.Checks;
+using Cs2LatencyDoctor.Core.Fixes;
 
 // Регистрируем старые кодировки: нужны для чтения вывода ping.exe и powercfg.
 AppBootstrap.Initialize();
@@ -14,6 +15,9 @@ var probeSeconds = 20;
 var jsonMode = false;
 var showHelp = false;
 var selfTest = false;
+var doFix = false;
+var doRevert = false;
+var doPlan = false;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -29,6 +33,15 @@ for (var i = 0; i < args.Length; i++)
         case "--selftest":
             selfTest = true;
             break;
+        case "--plan":
+            doPlan = true;
+            break;
+        case "--fix":
+            doFix = true;
+            break;
+        case "--revert":
+            doRevert = true;
+            break;
         case "--help" or "-h":
             showHelp = true;
             break;
@@ -41,21 +54,33 @@ if (selfTest)
     return SelfTestCommand.Run();
 }
 
+// ------------------------------------------------------- исправления и откат
+if (doFix || doRevert || doPlan)
+{
+    return await FixCommand.RunAsync(doFix, doRevert, doPlan, probeSeconds, jsonMode);
+}
+
 if (showHelp)
 {
     Console.WriteLine("""
-        Cs2LatencyDoctor — диагностика причин задержек в CS2.
+        Cs2LatencyDoctor — диагностика и исправление причин задержек в CS2.
 
         Использование:
-          Cs2LatencyDoctor.Cli [--seconds N] [--json]
+          cs2latency [--seconds N] [--json]      только диагностика, ничего не меняет
+          cs2latency --plan                      что можно исправить (ничего не меняет)
+          cs2latency --fix                       применить безопасные исправления
+          cs2latency --revert                    вернуть всё как было
+          cs2latency --selftest                  проверить логику оценки на записанных данных
 
         Параметры:
           --seconds N   длительность замера сети в секундах (5..120, по умолчанию 20)
           --json        вывести отчёт в формате JSON
-          --selftest    проверить логику оценки на записанных данных (без обращений к сети)
-          --help        эта справка
 
-        Программа ничего не меняет. Только читает состояние и показывает находки.
+        Без параметров программа только читает состояние и показывает находки.
+        При исправлении каждое изменённое значение сохраняется в журнал,
+        поэтому --revert возвращает систему в исходное состояние.
+
+        Для --fix и --revert нужны права администратора.
         """);
     return 0;
 }
@@ -214,13 +239,327 @@ internal static class HostInfo
 }
 
 /// <summary>
+/// Применение исправлений, просмотр плана и откат.
+/// Каждое изменённое значение пишется в журнал ДО правки — иначе откат невозможен.
+/// </summary>
+internal static class FixCommand
+{
+    public static async Task<int> RunAsync(bool fix, bool revert, bool plan, int probeSeconds, bool jsonMode)
+    {
+        var isAdmin = HostInfo.IsAdministrator();
+        var journal = new UndoJournal();
+
+        if (fix && revert)
+        {
+            Console.WriteLine("  Нельзя одновременно --fix и --revert. Выберите одно.");
+            return 1;
+        }
+
+        // ------------------------------------------------------------------ откат
+        if (revert)
+        {
+            Console.WriteLine();
+            Console.WriteLine("  ОТКАТ ИЗМЕНЕНИЙ");
+            Console.WriteLine("  " + new string('-', 70));
+            Console.WriteLine("  Журнал: " + journal.JournalPathText());
+            Console.WriteLine("  Записей: " + journal.Entries.Count);
+            Console.WriteLine();
+
+            if (!isAdmin)
+            {
+                Console.WriteLine("  Нужны права администратора. Запустите программу от имени администратора.");
+                return 1;
+            }
+
+            if (journal.Entries.Count == 0)
+            {
+                Console.WriteLine("  Программа ничего не меняла — откатывать нечего.");
+                return 0;
+            }
+
+            var context = new DiagnosticContext
+            {
+                IsAdministrator = isAdmin,
+                OnProgress = jsonMode ? null : m => Console.Write("\r  " + m.PadRight(68))
+            };
+
+            var revertReport = FixRunner.RevertAll(context, journal);
+            if (!jsonMode) Console.Write("\r" + new string(' ', 70) + "\r");
+            PrintReport(revertReport, "ОТКАТ");
+
+            return revertReport.FailedCount > 0 ? 3 : 0;
+        }
+
+        // ------------------------------------------------------------------- план
+        if (plan)
+        {
+            return await PrintPlanAsync(probeSeconds, jsonMode);
+        }
+
+        // ------------------------------------------------------------ применение
+        Console.WriteLine();
+        Console.WriteLine("  ПРИМЕНЕНИЕ ИСПРАВЛЕНИЙ");
+        Console.WriteLine("  " + new string('─', 70));
+
+        if (!isAdmin)
+        {
+            Console.WriteLine("  Нужны права администратора: исправления меняют системные настройки.");
+            Console.WriteLine("  Запустите программу от имени администратора.");
+            return 1;
+        }
+
+        // Сначала диагностика: она же определяет основной адаптер и путь к CS2.
+        var diagContext = new DiagnosticContext
+        {
+            IsAdministrator = isAdmin,
+            ProbeSeconds = probeSeconds,
+            OnProgress = jsonMode ? null : m => Console.Write("\r  " + m.PadRight(68))
+        };
+
+        var diagnostic = await DiagnosticRunner.CreateDefault(probeSeconds).RunAsync(diagContext);
+        if (!jsonMode) Console.Write("\r" + new string(' ', 70) + "\r");
+
+        Console.WriteLine($"  Найдено до правки: {diagnostic.Summary}");
+        Console.WriteLine();
+
+        var runner = FixRunner.CreateDefault(FixSelection.Safe);
+        var report = runner.ApplyAll(diagContext, journal);
+
+        PrintReport(report, "ИСПРАВЛЕНИЯ");
+
+        // Перезапуск адаптера нужен, чтобы настройки сетевой карты вступили в силу.
+        var needAdapterRestart = report.Results
+            .Any(r => r.Outcome == FixOutcome.Applied && r.FixId.StartsWith("net.adapter", StringComparison.Ordinal));
+
+        if (needAdapterRestart)
+        {
+            Console.WriteLine("  Настройки сетевой карты применятся после перезапуска адаптера.");
+            Console.WriteLine("  Перезапустить сейчас? Это кратко разорвёт сеть (y/n): ");
+
+            if (!jsonMode && Console.ReadLine()?.Trim().ToLowerInvariant() is "y" or "yes" or "д" or "да")
+            {
+                var adapterName = diagContext.PrimaryAdapterName;
+                if (!string.IsNullOrEmpty(adapterName))
+                {
+                    var ok = NetworkAdapterRestart.TryRestart(adapterName);
+                    Console.WriteLine(ok
+                        ? "  Адаптер перезапущен."
+                        : "  Не удалось перезапустить автоматически — отключите и включите сеть вручную.");
+                }
+            }
+            else
+            {
+                Console.WriteLine("  Пропущено. Перезапустите адаптер вручную или перезагрузите ПК.");
+            }
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("  Откатить всё назад:  cs2latency --revert");
+        Console.WriteLine();
+
+        if (!jsonMode)
+        {
+            Console.WriteLine("  Проверяю результат повторным замером…");
+            Console.WriteLine();
+
+            var after = new DiagnosticContext
+            {
+                IsAdministrator = isAdmin,
+                ProbeSeconds = probeSeconds,
+                OnProgress = m => Console.Write("\r  " + m.PadRight(68))
+            };
+
+            var afterReport = await DiagnosticRunner.CreateDefault(probeSeconds).RunAsync(after);
+            Console.Write("\r" + new string(' ', 70) + "\r");
+            Console.WriteLine($"  После правки: {afterReport.Summary}");
+            Console.WriteLine();
+
+            CompareMetrics(diagnostic, afterReport);
+        }
+
+        return report.FailedCount > 0 ? 3 : 0;
+    }
+
+    // ------------------------------------------------------------------- план
+    private static async Task<int> PrintPlanAsync(int probeSeconds, bool jsonMode)
+    {
+        var isAdmin = HostInfo.IsAdministrator();
+
+        Console.WriteLine();
+        Console.WriteLine("  ПЛАН ИСПРАВЛЕНИЙ (ничего не меняется)");
+        Console.WriteLine("  " + new string('─', 70));
+        Console.WriteLine($"  Права администратора: {(isAdmin ? "есть" : "нет")}");
+        Console.WriteLine();
+
+        var context = new DiagnosticContext
+        {
+            IsAdministrator = isAdmin,
+            ProbeSeconds = probeSeconds,
+            OnProgress = jsonMode ? null : m => Console.Write("\r  " + m.PadRight(68))
+        };
+
+        var report = await DiagnosticRunner.CreateDefault(probeSeconds).RunAsync(context);
+        if (!jsonMode) Console.Write("\r" + new string(' ', 70) + "\r");
+
+        var fixable = report.Results.Where(r => r.Fixes.Count > 0).ToList();
+
+        if (fixable.Count == 0)
+        {
+            Console.WriteLine("  Исправлять нечего: все проверенные параметры уже в порядке.");
+        }
+        else
+        {
+            foreach (var result in fixable)
+            {
+                var mark = result.Severity switch
+                {
+                    Severity.Problem => "ПРОБЛЕМА",
+                    Severity.Warning => "ВНИМАНИЕ",
+                    _ => "МОЖНО ЛУЧШЕ"
+                };
+
+                Console.WriteLine($"  [{mark}] {result.Title}");
+                Console.WriteLine($"             {result.Detail}");
+
+                foreach (var fix in result.Fixes)
+                {
+                    var risk = fix.Risk switch
+                    {
+                        FixRisk.Safe => "безопасно, обратимо",
+                        FixRisk.Tradeoff => "есть компромисс",
+                        _ => "только вручную"
+                    };
+                    Console.WriteLine($"             → {fix.Title}  ({risk})");
+                }
+
+                Console.WriteLine();
+            }
+        }
+
+        var manual = report.Results.SelectMany(r => r.Fixes)
+            .Where(f => f.Risk == FixRisk.ManualOnly)
+            .DistinctBy(f => f.Id)
+            .ToList();
+
+        if (manual.Count > 0)
+        {
+            Console.WriteLine("  Требует ручного действия:");
+            foreach (var fix in manual)
+                Console.WriteLine($"    • {fix.Title}" + (fix.Note is null ? "" : $" — {fix.Note}"));
+            Console.WriteLine();
+        }
+
+        Console.WriteLine("  Применить безопасные исправления:  cs2latency --fix");
+        Console.WriteLine();
+
+        return 0;
+    }
+
+    // ---------------------------------------------------------------- вывод
+    private static void PrintReport(FixReport report, string header)
+    {
+        Console.WriteLine("  " + new string('─', 70));
+        Console.WriteLine($"  {header}: {report.Summary}");
+        Console.WriteLine("  " + new string('─', 70));
+
+        foreach (var result in report.Results)
+        {
+            var (mark, color) = result.Outcome switch
+            {
+                FixOutcome.Applied => ("[ПРИМЕНЕНО]", ConsoleColor.Green),
+                FixOutcome.AlreadyOk => ("[УЖЕ ОК]   ", ConsoleColor.DarkGreen),
+                FixOutcome.Skipped => ("[ПРОПУЩЕНО]", ConsoleColor.DarkGray),
+                _ => ("[ОШИБКА]   ", ConsoleColor.Red)
+            };
+
+            Console.ForegroundColor = color;
+            Console.Write("  " + mark + " ");
+            Console.ResetColor();
+            Console.WriteLine(result.Title);
+            Console.WriteLine("                " + result.Message);
+            Console.WriteLine();
+        }
+
+        Console.WriteLine($"  Журнал отката: {report.JournalPathText}");
+        Console.WriteLine();
+    }
+
+    /// <summary>Сравнение метрик до и после — это и есть доказательство результата.</summary>
+    private static void CompareMetrics(DiagnosticReport before, DiagnosticReport after)
+    {
+        var pairs = new List<(string Name, double Before, double After)>();
+
+        foreach (var afterResult in after.Results)
+        {
+            var beforeResult = before.Results.FirstOrDefault(r => r.Id == afterResult.Id);
+            if (beforeResult is null) continue;
+
+            foreach (var metric in afterResult.Metrics)
+            {
+                if (metric.Key != "spike_percent") continue;
+                if (!beforeResult.Metrics.TryGetValue(metric.Key, out var oldValue)) continue;
+                pairs.Add((afterResult.Title, oldValue, metric.Value));
+            }
+        }
+
+        if (pairs.Count == 0)
+        {
+            Console.WriteLine("  Сравнить замеры не удалось (нет общих метрик).");
+            return;
+        }
+
+        Console.WriteLine("  СРАВНЕНИЕ ДО/ПОСЛЕ (всплески задержки, %)");
+        Console.WriteLine("  " + new string('─', 70));
+
+        foreach (var (name, beforeValue, afterValue) in pairs)
+        {
+            var delta = afterValue - beforeValue;
+            var verdict = delta < -0.5 ? "лучше" : delta > 0.5 ? "хуже" : "без изменений";
+
+            Console.ForegroundColor = delta < -0.5 ? ConsoleColor.Green
+                : delta > 0.5 ? ConsoleColor.Red : ConsoleColor.Gray;
+            Console.WriteLine($"  {name,-34} {beforeValue,6:0.#}% → {afterValue,6:0.#}%   {verdict}");
+            Console.ResetColor();
+        }
+
+        Console.WriteLine();
+    }
+}
+
+/// <summary>Перезапуск сетевого адаптера, чтобы правки драйвера вступили в силу.</summary>
+internal static class NetworkAdapterRestart
+{
+    public static bool TryRestart(string adapterName)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -Command \"Restart-NetAdapter -Name '{adapterName}' -Confirm:$false\"",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(psi);
+            process?.WaitForExit(30000);
+            Thread.Sleep(5000);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}
+
+/// <summary>
 /// Самопроверка логики оценки на записанных замерах.
 /// Нужна потому, что сетевые замеры доступны не на всякой машине (ICMP часто блокируется),
 /// а правила оценки должны быть верными всегда.
 /// </summary>
 internal static class SelfTestCommand
-{
-    public static int Run()
+{    public static int Run()
     {
         Console.WriteLine();
         Console.WriteLine("  САМОПРОВЕРКА логики оценки задержки (обращений к сети нет)");
