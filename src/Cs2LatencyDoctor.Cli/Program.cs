@@ -183,6 +183,8 @@ if (jsonMode)
             severity = r.Severity.ToString(),
             detail = r.Detail,
             why = r.Why,
+            recommendation = r.Recommendation,
+            noHelpReason = r.NoHelpReason.ToString(),
             fixes = r.Fixes.Select(f => new { id = f.Id, title = f.Title, risk = f.Risk.ToString(), note = f.Note }),
             metrics = r.Metrics
         })
@@ -256,6 +258,21 @@ foreach (var result in report.Results)
         Console.ResetColor();
     }
 
+    // Если программа помочь не может или может не всё — объясняем, почему и что делать.
+    if (result.HasRecommendation)
+    {
+        var label = result.NoHelpReason == NoHelpReason.None
+            ? "Что сделать вам"
+            : $"Что делать ({DescribeReason(result.NoHelpReason)})";
+
+        Console.ForegroundColor = ConsoleColor.Magenta;
+        Console.WriteLine($"                → {label}:");
+        Console.ResetColor();
+
+        foreach (var line in Wrap(result.Recommendation!, 66))
+            Console.WriteLine("                  " + line);
+    }
+
     Console.WriteLine();
 }
 
@@ -286,6 +303,19 @@ Console.WriteLine();
 return report.Count(Severity.Problem) > 0 ? 2 : 0;
 
 // ------------------------------------------------------------------ хелперы
+/// <summary>Человеческое объяснение причины, по которой программа не смогла помочь.</summary>
+static string DescribeReason(NoHelpReason reason) => reason switch
+{
+    NoHelpReason.HardwareNotSupported => "железо не поддерживает настройку",
+    NoHelpReason.BlockedBySystem => "система блокирует доступ",
+    NoHelpReason.VendorLocked => "закрыто производителем",
+    NoHelpReason.OutsideThisPc => "причина вне компьютера",
+    NoHelpReason.NeedsPhysicalAction => "нужно физическое действие",
+    NoHelpReason.NotEnoughData => "не хватает данных",
+    NoHelpReason.NeedsAdmin => "нужны права администратора",
+    _ => "пояснение"
+};
+
 static string MetricName(string metric) => metric switch
 {
     "spike_percent" => "всплески, %",

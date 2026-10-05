@@ -91,4 +91,14 @@ public static class NetworkAdapterReader
 
         return found;
     }
+
+    /// <summary>
+    /// Сколько известных нам параметров задержки вообще есть у этого адаптера.
+    ///
+    /// Ноль означает, что драйвер другого производителя и наши правки к нему
+    /// неприменимы. Это важно отличать от «всё уже настроено правильно»:
+    /// в первом случае мы бессильны, во втором — работа сделана.
+    /// </summary>
+    public static int KnownKeywordCount(string adapterDescription) =>
+        LatencyHostileKeywords.Keys.Count(k => ReadKeyword(adapterDescription, k).HasValue);
 }

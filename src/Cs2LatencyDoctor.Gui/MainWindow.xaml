@@ -143,6 +143,20 @@
                                             <TextBlock Text="{Binding FixHint}" Foreground="#4C8DFF"
                                                        FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
                                                        Visibility="{Binding HasFix, Converter={StaticResource BoolToVisibility}}"/>
+
+                                            <!-- Если программа помочь не может — объясняем, почему и что делать -->
+                                            <Border Background="#2A2440" CornerRadius="4" Padding="8"
+                                                    Margin="0,6,0,0"
+                                                    Visibility="{Binding HasRecommendation, Converter={StaticResource BoolToVisibility}}">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding RecommendationTitle}"
+                                                               Foreground="#B39DFF" FontSize="11"
+                                                               FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding Recommendation}"
+                                                               Foreground="#D8D2F0" FontSize="11"
+                                                               TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                                </StackPanel>
+                                            </Border>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>

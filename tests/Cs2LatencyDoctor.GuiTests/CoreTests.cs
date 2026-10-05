@@ -306,6 +306,74 @@ internal static class CoreTests
                 throw new InvalidOperationException("Нет понятного сообщения: " + report.Results[0].Message);
         });
 
+        RunTest(results, "Ни одна проверка не молчит: «не могу» всегда объяснено", () =>
+        {
+            // Правило проекта: если программа не может помочь или не может измерить —
+            // она обязана сказать, почему и что делать человеку. Молчаливого «пропущено» быть не должно.
+            var context = new DiagnosticContext { IsAdministrator = false, ProbeSeconds = 5 };
+            var report = DiagnosticRunner.CreateDefault(5).RunAsync(context).GetAwaiter().GetResult();
+
+            var silent = report.Results
+                .Where(r => r.Severity == Severity.Skipped && !r.HasRecommendation)
+                .ToList();
+
+            if (silent.Count > 0)
+                throw new InvalidOperationException(
+                    "Проверки без пояснения, что делать: " +
+                    string.Join("; ", silent.Select(r => r.Title)));
+
+            var skippedWithoutReason = report.Results
+                .Where(r => r.Severity == Severity.Skipped && r.NoHelpReason == NoHelpReason.None)
+                .ToList();
+
+            if (skippedWithoutReason.Count > 0)
+                throw new InvalidOperationException(
+                    "Пропущенные проверки без указания причины: " +
+                    string.Join("; ", skippedWithoutReason.Select(r => r.Title)));
+        });
+
+        RunTest(results, "Проблемы и предупреждения объясняют, что делать", () =>
+        {
+            var context = new DiagnosticContext { IsAdministrator = false, ProbeSeconds = 5 };
+            var report = DiagnosticRunner.CreateDefault(5).RunAsync(context).GetAwaiter().GetResult();
+
+            var unexplained = report.Results
+                .Where(r => r.Severity is Severity.Problem or Severity.Warning)
+                .Where(r => !r.HasRecommendation && !r.CanFixItself)
+                .ToList();
+
+            if (unexplained.Count > 0)
+                throw new InvalidOperationException(
+                    "Найдены проблемы без совета и без автоисправления: " +
+                    string.Join("; ", unexplained.Select(r => r.Title)));
+        });
+
+        RunTest(results, "Проверка без прав объясняет, что нужен администратор", () =>
+        {
+            // Отдельный случай: часть проверок требует прав. Человек должен понимать,
+            // что дело в правах, а не в том, что программа сломалась.
+            var check = new RequiresAdminTestCheck();
+            var resultsList = check.RunAsync(
+                new DiagnosticContext { IsAdministrator = false, ProbeSeconds = 3 },
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            var runner = new DiagnosticRunner().Add(check);
+            var report = runner.RunAsync(
+                new DiagnosticContext { IsAdministrator = false, ProbeSeconds = 3 },
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            var skipped = report.Results.FirstOrDefault(r => r.Severity == Severity.Skipped);
+
+            if (skipped is null)
+                throw new InvalidOperationException("Проверка без прав не помечена как пропущенная");
+            if (!skipped.HasRecommendation)
+                throw new InvalidOperationException("Нет пояснения, что делать без прав администратора");
+            if (skipped.NoHelpReason != NoHelpReason.NeedsAdmin)
+                throw new InvalidOperationException($"Причина «{skipped.NoHelpReason}», ожидалась NeedsAdmin");
+            if (resultsList.Count == 0)
+                throw new InvalidOperationException("Проверка не вернула результатов");
+        });
+
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };
@@ -355,4 +423,18 @@ internal static class CoreTests
             // не критично
         }
     }
+}
+
+/// <summary>Проверка, которой нужны права администратора — для проверки поведения без прав.</summary>
+internal sealed class RequiresAdminTestCheck : IDiagnosticCheck
+{
+    public string Id => "test.requires-admin";
+    public string Title => "Проверка, требующая прав";
+    public bool RequiresAdmin => true;
+
+    public Task<IReadOnlyList<CheckResult>> RunAsync(DiagnosticContext context, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<CheckResult>>(new[]
+        {
+            CheckResult.Ok(Id, Title, "выполнено с правами")
+        });
 }

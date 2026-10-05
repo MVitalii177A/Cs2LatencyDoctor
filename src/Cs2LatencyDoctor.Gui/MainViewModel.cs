@@ -20,8 +20,15 @@ public sealed class FindingRow
     public string FixHint { get; init; } = string.Empty;
     public required string Color { get; init; }
 
+    /// <summary>Что делать, если программа помочь не может или может не всё.</summary>
+    public string Recommendation { get; init; } = string.Empty;
+
+    /// <summary>Заголовок блока рекомендации: «Что делать» или «Что делать (причина)».</summary>
+    public string RecommendationTitle { get; init; } = string.Empty;
+
     public bool HasWhy => !string.IsNullOrWhiteSpace(Why);
     public bool HasFix => !string.IsNullOrWhiteSpace(FixHint);
+    public bool HasRecommendation => !string.IsNullOrWhiteSpace(Recommendation);
 }
 
 /// <summary>Строка списка фоновых программ.</summary>
@@ -146,6 +153,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     // -------------------------------------------------------------- диагностика
+    /// <summary>Человеческое объяснение причины, по которой программа не смогла помочь.</summary>
+    private static string DescribeReason(NoHelpReason reason) => reason switch
+    {
+        NoHelpReason.HardwareNotSupported => "железо не поддерживает настройку",
+        NoHelpReason.BlockedBySystem => "система блокирует доступ",
+        NoHelpReason.VendorLocked => "закрыто производителем",
+        NoHelpReason.OutsideThisPc => "причина вне компьютера",
+        NoHelpReason.NeedsPhysicalAction => "нужно физическое действие",
+        NoHelpReason.NotEnoughData => "не хватает данных",
+        NoHelpReason.NeedsAdmin => "нужны права администратора",
+        _ => "пояснение"
+    };
+
     public async Task RunDiagnosticsAsync()
     {
         if (IsBusy) return;
@@ -196,7 +216,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     Detail = result.Detail,
                     Why = result.Why ?? string.Empty,
                     FixHint = fixHint,
-                    Color = color
+                    Color = color,
+                    Recommendation = result.Recommendation ?? string.Empty,
+                    RecommendationTitle = result.NoHelpReason == NoHelpReason.None
+                        ? "Что сделать вам"
+                        : "Что делать: " + DescribeReason(result.NoHelpReason)
                 });
             }
 

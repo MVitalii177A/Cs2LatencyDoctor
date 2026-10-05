@@ -21,7 +21,13 @@ public sealed class Cs2ConfigCheck : IDiagnosticCheck
         if (install is null)
         {
             results.Add(CheckResult.Skipped(Id, Title,
-                "CS2 не найдена (Steam или папка игры не обнаружены)"));
+                "CS2 не найдена (Steam или папка игры не обнаружены)",
+                NoHelpReason.NotEnoughData,
+                "Программа не может проверить настройки игры, потому что не нашла её на дисках. " +
+                "Что делать: если CS2 у вас установлена, запустите её один раз через Steam — " +
+                "программа ищет игру по установленному Steam и списку библиотек. " +
+                "Если игра стоит в нестандартном месте, добавьте её папку как библиотеку в Steam " +
+                "(Настройки → Накопители). Остальные проверки работают независимо от игры."));
             return Task.FromResult<IReadOnlyList<CheckResult>>(results);
         }
 
@@ -34,7 +40,11 @@ public sealed class Cs2ConfigCheck : IDiagnosticCheck
         if (video is null)
         {
             results.Add(CheckResult.Skipped(Id + ".display", "Режим экрана CS2",
-                "Файл cs2_video.txt не найден — игра ещё не запускалась"));
+                "Файл настроек видео ещё не создан — игра ни разу не запускалась",
+                NoHelpReason.NotEnoughData,
+                "Программа не может прочитать режим экрана, потому что CS2 ещё не создала файл " +
+                "настроек. Что делать: запустите CS2 один раз (можно дойти до главного меню) и " +
+                "закройте её, затем повторите проверку."));
         }
         else
         {
@@ -56,7 +66,13 @@ public sealed class Cs2ConfigCheck : IDiagnosticCheck
                         new FixAction("cs2.display.exclusive",
                             "Переключить CS2 в exclusive fullscreen", FixRisk.Safe,
                             "Правится в файле настроек игры. Требуется, чтобы CS2 была закрыта.")
-                    }));
+                    },
+                    "Программа переключит режим сама — нажмите «Применить исправления», закрыв CS2. " +
+                    "Что сделать вам после этого: если разрешение в игре не совпадает с разрешением " +
+                    "монитора, проверьте в панели NVIDIA (Дисплей → Регулировка размера и положения " +
+                    "рабочего стола), что режим масштабирования = «Полноэкранный» и выполняется на GPU. " +
+                    "Иначе по краям появятся чёрные полосы. И не меняйте режим экрана в настройках " +
+                    "игры после этого — игра перезапишет файл."));
             }
             else
             {
@@ -67,7 +83,10 @@ public sealed class Cs2ConfigCheck : IDiagnosticCheck
                     {
                         new FixAction("cs2.display.exclusive",
                             "Переключить CS2 в exclusive fullscreen", FixRisk.Safe, null)
-                    }));
+                    },
+                    "Программа переключит режим сама (нужно закрыть CS2). Если полос по краям быть " +
+                    "не должно, а они появились — включите в панели NVIDIA полноэкранное " +
+                    "масштабирование на GPU."));
             }
 
             // --- VSync ---
@@ -76,7 +95,12 @@ public sealed class Cs2ConfigCheck : IDiagnosticCheck
                 results.Add(CheckResult.Warn(Id + ".vsync", "Вертикальная синхронизация CS2",
                     "Включена",
                     "VSync добавляет до одного кадра задержки и сильно вредит отзывчивости прицела.",
-                    new[] { new FixAction("cs2.vsync.off", "Выключить VSync в CS2", FixRisk.Safe, null) }));
+                    new[] { new FixAction("cs2.vsync.off", "Выключить VSync в CS2", FixRisk.Safe, null) },
+                    "VSync правится только в меню игры (Настройки → Видео → Ожидание вертикальной " +
+                    "синхронизации = Выключено): файл настроек игра перезапишет при выходе, поэтому " +
+                    "менять это в файле бессмысленно. Если вы включали VSync против разрывов картинки — " +
+                    "вместо него используйте G-Sync/FreeSync вместе с Reflex, они дают ровную картинку " +
+                    "без добавления задержки."));
             }
             else
             {
@@ -97,7 +121,10 @@ public sealed class Cs2ConfigCheck : IDiagnosticCheck
                     results.Add(CheckResult.Warn(Id + ".reflex", "NVIDIA Reflex", "Выключен",
                         "Reflex синхронизирует начало отрисовки кадра с готовностью GPU и заметно " +
                         "снижает задержку ввода — при условии, что загрузка GPU высокая.",
-                        new[] { new FixAction("cs2.reflex.on", "Включить Reflex + Boost", FixRisk.Safe, null) }));
+                        new[] { new FixAction("cs2.reflex.on", "Включить Reflex + Boost", FixRisk.Safe, null) },
+                        "Reflex включается в меню игры: Настройки → Видео → NVIDIA Reflex Low Latency → " +
+                        "«Включено + Boost». Через файл это не сделать — игра перезапишет настройку. " +
+                        "Если у вас видеокарта AMD, вместо Reflex используйте Anti-Lag в драйвере."));
                     break;
             }
 
@@ -107,7 +134,11 @@ public sealed class Cs2ConfigCheck : IDiagnosticCheck
                 results.Add(CheckResult.Info(Id + ".msaa", "Сглаживание (MSAA)",
                     $"{video.Msaa}x",
                     "Высокое сглаживание повышает время кадра и удлиняет очередь GPU. " +
-                    "В CS2 его обычно держат на 2x–4x или выключают ради максимального FPS."));
+                    "В CS2 его обычно держат на 2x–4x или выключают ради максимального FPS.",
+                    recommendation: "Программа не меняет настройки графики: это вопрос вашего вкуса " +
+                    "и мощности видеокарты. Что делать: если FPS заметно ниже частоты монитора, " +
+                    "снизьте сглаживание до 2x или выключите в Настройки → Видео → " +
+                    "Multisampling Anti-Aliasing Mode."));
             }
         }
 
