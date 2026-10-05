@@ -320,7 +320,7 @@ internal static class CoreTests
             if (silent.Count > 0)
                 throw new InvalidOperationException(
                     "Проверки без пояснения, что делать: " +
-                    string.Join("; ", silent.Select(r => r.Title)));
+                    string.Join(" | ", silent.Select(r => $"{r.Id} («{r.Title}»): {r.Detail}")));
 
             var skippedWithoutReason = report.Results
                 .Where(r => r.Severity == Severity.Skipped && r.NoHelpReason == NoHelpReason.None)
@@ -329,7 +329,7 @@ internal static class CoreTests
             if (skippedWithoutReason.Count > 0)
                 throw new InvalidOperationException(
                     "Пропущенные проверки без указания причины: " +
-                    string.Join("; ", skippedWithoutReason.Select(r => r.Title)));
+                    string.Join(" | ", skippedWithoutReason.Select(r => $"{r.Id} («{r.Title}»)")));
         });
 
         RunTest(results, "Проблемы и предупреждения объясняют, что делать", () =>
