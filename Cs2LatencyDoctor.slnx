@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Cs2LatencyDoctor.Cli/Cs2LatencyDoctor.Cli.csproj" />
+    <Project Path="src/Cs2LatencyDoctor.Core/Cs2LatencyDoctor.Core.csproj" />
+  </Folder>
+</Solution>
