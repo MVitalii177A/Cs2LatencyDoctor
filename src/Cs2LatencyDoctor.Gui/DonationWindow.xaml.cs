@@ -224,9 +224,10 @@ public partial class DonationWindow : Window
         // выглядело так, будто свечение обрезано.
         Panel.SetZIndex(card, 100);
 
-        // Размытие 60 с запасом места вокруг карточки (22 px по краям плюс
-        // свободное место в ряду) даёт законченный ореол: он успевает
-        // растаять до границы и не выглядит обрубленным.
+        // Два слоя свечения: широкий оранжевый ореол вокруг рамки и узкое
+        // янтарное ядро у самых краёв. Вместе дают тёплое перетекание цвета.
+        // Размытие 60 с запасом места вокруг карточки даёт законченный ореол:
+        // он успевает растаять до границы и не выглядит обрубленным.
         AnimateCard(card, CardHoverScale, 1.0, glowRadius: 60, glowOpacity: 1.0);
     }
 
@@ -276,12 +277,22 @@ public partial class DonationWindow : Window
         // --- свечение сзади ---
         // Анимируются только радиус и прозрачность: анимация самих параметров
         // эффекта дешевле, чем подмена эффекта на каждый кадр.
-        if (card.Effect is DropShadowEffect glow)
-        {
-            glow.BeginAnimation(DropShadowEffect.BlurRadiusProperty,
-                new DoubleAnimation(glowRadius, duration) { EasingFunction = easing });
-            glow.BeginAnimation(DropShadowEffect.OpacityProperty,
-                new DoubleAnimation(glowOpacity, duration) { EasingFunction = easing });
-        }
+        AnimateGlow(card.Effect as DropShadowEffect, glowRadius, glowOpacity, duration, easing);
+
+        // Узкое ядро у краёв: размытие меньше, поэтому у карточки цвет теплее.
+        var core = (card.Child as FrameworkElement)?.Effect as DropShadowEffect;
+        AnimateGlow(core, glowRadius * 0.45, glowOpacity * 0.9, duration, easing);
+    }
+
+    /// <summary>Плавно перевести слой свечения в заданное состояние.</summary>
+    private static void AnimateGlow(DropShadowEffect? glow, double radius, double opacity,
+        TimeSpan duration, IEasingFunction easing)
+    {
+        if (glow is null) return;
+
+        glow.BeginAnimation(DropShadowEffect.BlurRadiusProperty,
+            new DoubleAnimation(radius, duration) { EasingFunction = easing });
+        glow.BeginAnimation(DropShadowEffect.OpacityProperty,
+            new DoubleAnimation(opacity, duration) { EasingFunction = easing });
     }
 }
