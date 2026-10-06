@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 namespace Cs2LatencyDoctor.Gui;
 
@@ -219,10 +220,14 @@ public partial class DonationWindow : Window
     {
         if (sender is not Border card) return;
 
-        // Наведённая карточка поднимается на верхний слой. Без этого её свечение
-        // уходило под соседние карточки: те рисуются позже и перекрывали ореол —
-        // выглядело так, будто свечение обрезано.
-        Panel.SetZIndex(card, 100);
+        // Наведённая карточка поднимается на верхний слой, иначе её свечение
+        // перекрывается соседними карточками.
+        //
+        // Поднимать надо ЯЧЕЙКУ СПИСКА, а не саму карточку: соседние карточки
+        // лежат не в одной Canvas, а в разных контейнерах ItemsControl, поэтому
+        // ZIndex внутри карточки на порядок отрисовки не влияет. Проверено
+        // замером: без этого свечение справа от средней карточки не рисовалось.
+        RaiseCard(card, top: true);
 
         // Два слоя свечения: широкий оранжевый ореол вокруг рамки и узкое
         // янтарное ядро у самых краёв. Вместе дают тёплое перетекание цвета.
@@ -235,9 +240,54 @@ public partial class DonationWindow : Window
     {
         if (sender is not Border card) return;
 
-        Panel.SetZIndex(card, 1);
-
         AnimateCard(card, 1.0, 0.0, glowRadius: 0, glowOpacity: 0);
+
+        // Опускаем ячейку обратно только после того, как свечение погаснет:
+        // иначе на середине затухания ореол резко уйдёт под соседнюю карточку.
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            RaiseCard(card, top: false);
+        };
+        timer.Start();
+    }
+
+    /// <summary>
+    /// Поднять или опустить ячейку списка, в которой лежит карточка.
+    ///
+    /// Подниматься надо именно до ячейки, созданной ItemsControl: соседние
+    /// карточки лежат в разных контейнерах, поэтому ZIndex внутри карточки
+    /// на порядок отрисовки не влияет.
+    ///
+    /// Начинаем с родителя карточки. Если начать с самой карточки, первым
+    /// найдётся её собственный ContentPresenter — тот, что показывает внутри
+    /// неё StackPanel, — и ZIndex уйдёт не туда. Проверено замером: из-за
+    /// этого свечение продолжало уходить под соседнюю карточку.
+    /// </summary>
+    private static void RaiseCard(Border card, bool top)
+    {
+        try
+        {
+            System.Windows.DependencyObject? node = VisualTreeHelper.GetParent(card);
+
+            // Ищем ячейку, которая лежит внутри панели списка.
+            while (node is not null)
+            {
+                if (node is ContentPresenter presenter &&
+                    VisualTreeHelper.GetParent(presenter) is Panel)
+                {
+                    Panel.SetZIndex(presenter, top ? 100 : 1);
+                    return;
+                }
+
+                node = VisualTreeHelper.GetParent(node);
+            }
+        }
+        catch
+        {
+            // Если дерево ещё не построено — не критично, порядок останется прежним.
+        }
     }
 
     /// <summary>Во сколько раз растёт карточка при наведении.</summary>
