@@ -1,7 +1,24 @@
 # Cs2LatencyDoctor
 
+[![Скачать](https://img.shields.io/github/v/release/MVitalii177A/Cs2LatencyDoctor?label=скачать&color=2EA043)](https://github.com/MVitalii177A/Cs2LatencyDoctor/releases/latest)
+[![Лицензия](https://img.shields.io/badge/лицензия-MIT-blue)](LICENSE)
+
 Бесплатный открытый инструмент для Windows: находит причины «пули не регистрируются», инпутлага
 и дёрганости в Counter-Strike 2 — и показывает **доказательства замерами**, а не «оптимизируй всё».
+
+## Как получить
+
+Готовые файлы — в разделе [**Releases**](https://github.com/MVitalii177A/Cs2LatencyDoctor/releases/latest).
+Нужен один архив:
+
+| Файл | Нужен ли .NET |
+|---|---|
+| `Cs2LatencyDoctor-1.1.0-full.zip` (60 МБ) | **нет** — всё внутри |
+| `Cs2LatencyDoctor-1.1.0-lite.zip` (0.3 МБ) | да, .NET 10 Desktop Runtime |
+| `Cs2LatencyDoctor-1.1.0-console.zip` (34 МБ) | нет — версия без окна |
+
+Не знаете, что выбрать — берите `full`: распакуйте и запустите `ЗАПУСТИТЬ.bat`.
+Установка не требуется.
 
 ## Зачем это нужно
 
