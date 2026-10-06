@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 
 namespace Cs2LatencyDoctor.Gui;
@@ -204,4 +206,51 @@ public partial class DonationWindow : Window
     }
 
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>
+    /// Наведение на карточку кошелька: карточка плавно растёт, её рамка
+    /// подсвечивается. Рост сделан через RenderTransform — он не влияет
+    /// на раскладку, поэтому соседние карточки не сдвигаются.
+    /// </summary>
+    private void OnCardMouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is not Border card) return;
+
+        AnimateCard(card, scale: 1.04, borderBrush: (Brush)FindResource("AccentBrush"));
+    }
+
+    private void OnCardMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (sender is not Border card) return;
+
+        AnimateCard(card, scale: 1.0, borderBrush: (Brush)FindResource("LineBrush"));
+    }
+
+    private static void AnimateCard(Border card, double scale, Brush borderBrush)
+    {
+        var duration = TimeSpan.FromMilliseconds(160);
+
+        // Плавное изменение размера
+        if (card.RenderTransform is ScaleTransform transform &&
+            transform.IsFrozen == false)
+        {
+            var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+            var scaleX = new DoubleAnimation(scale, duration) { EasingFunction = easing };
+            var scaleY = new DoubleAnimation(scale, duration) { EasingFunction = easing };
+
+            transform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleX);
+            transform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
+        }
+
+        // Подсветка рамки
+        var colour = new ColorAnimation(
+            (borderBrush as SolidColorBrush)?.Color ?? Colors.Transparent, duration)
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+
+        card.BorderBrush = new SolidColorBrush(Colors.Transparent);
+        card.BorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, colour);
+    }
 }

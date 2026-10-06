@@ -12,6 +12,7 @@
     <Window.Resources>
         <SolidColorBrush x:Key="PanelBrush" Color="#1C1D23"/>
         <SolidColorBrush x:Key="LineBrush" Color="#2A2C34"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#2EA043"/>
         <SolidColorBrush x:Key="TextBrush" Color="#E6E7EB"/>
         <SolidColorBrush x:Key="MutedBrush" Color="#8B8D98"/>
 
@@ -89,10 +90,22 @@
 
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <!-- Ширина 270 подобрана так, чтобы три кошелька вставали
-                                 в один ряд при окне 940 px: 3 × 280 = 840 помещается
-                                 в доступные 885 px. -->
-                            <Border Style="{StaticResource Panel}" Width="270" Margin="5">
+                            <!-- Ширина 262 подобрана так, чтобы три кошелька вставали
+                                 в один ряд при окне 940 px. При наведении карточка
+                                 растёт, поэтому ширина QR выбрана с запасом:
+                                 QR 196 + отступы 16 + рамка карточки 28 = 240,
+                                 при увеличении на 4% нужно 250 — влезает. -->
+                            <Border Style="{StaticResource Panel}" Width="262" Margin="5"
+                                    Cursor="Hand"
+                                    MouseEnter="OnCardMouseEnter"
+                                    MouseLeave="OnCardMouseLeave">
+                                <Border.RenderTransform>
+                                    <!-- Точка отсчёта в левом верхнем углу: карточка растёт
+                                         вправо и вниз, поэтому вторая строка не наезжает
+                                         на первую, когда карточек станет больше трёх. -->
+                                    <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"
+                                                    CenterX="0" CenterY="0"/>
+                                </Border.RenderTransform>
                                 <StackPanel>
                                     <TextBlock Text="{Binding Title}" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock Text="{Binding NetworkText}" Foreground="#C9CBD3"
@@ -102,22 +115,34 @@
                                                MinHeight="30"
                                                Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}"/>
 
-                                    <!-- QR-код из готовой картинки -->
-                                    <Border Background="White" CornerRadius="8" Padding="6"
-                                            HorizontalAlignment="Center" Margin="0,6,0,8"
-                                            Visibility="{Binding HasImage, Converter={StaticResource BoolToVisibility}}">
-                                        <Image Source="{Binding QrImage}" Width="164" Height="164"
-                                               RenderOptions.BitmapScalingMode="NearestNeighbor"/>
-                                    </Border>
-
                                     <TextBlock Text="{Binding ImageProblem}" Foreground="#F5A524" FontSize="11"
                                                TextWrapping="Wrap" Margin="0,8,0,8"
                                                Visibility="{Binding HasImageProblem, Converter={StaticResource BoolToVisibility}}"/>
 
-                                    <TextBlock Text="Адрес кошелька:" Foreground="{StaticResource MutedBrush}"
-                                               FontSize="11" Margin="0,0,0,4"/>
+                                    <!--
+                                      QR-код. При наведении на карточку она плавно
+                                      увеличивается: RenderTransform не влияет на раскладку,
+                                      поэтому соседние карточки не сдвигаются.
+                                    -->
+                                    <Border Background="White" CornerRadius="10" Padding="8"
+                                            HorizontalAlignment="Center" Margin="0,8,0,0"
+                                            Cursor="Hand"
+                                            Visibility="{Binding HasImage, Converter={StaticResource BoolToVisibility}}">
+                                        <Image Source="{Binding QrImage}" Width="196" Height="196"
+                                               RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                                    </Border>
 
-                                    <Border Background="#20222A" CornerRadius="6" Padding="4">
+                                    <TextBlock Text="Наведите телефон на код" Foreground="#8B8D98"
+                                               FontSize="11" HorizontalAlignment="Center"
+                                               Margin="0,8,0,0"
+                                               Visibility="{Binding HasImage, Converter={StaticResource BoolToVisibility}}"/>
+
+                                    <TextBlock Text="Адрес кошелька:" Foreground="{StaticResource MutedBrush}"
+                                               FontSize="11" Margin="0,10,0,4"
+                                               Visibility="{Binding HasAddress, Converter={StaticResource BoolToVisibility}}"/>
+
+                                    <Border Background="#20222A" CornerRadius="6" Padding="4"
+                                            Visibility="{Binding HasAddress, Converter={StaticResource BoolToVisibility}}">
                                         <!-- Моноширинный шрифт: в адресах важно различать
                                              похожие символы (0 и O, 1 и l, 5 и S). -->
                                         <TextBox Text="{Binding Address, Mode=OneWay}" IsReadOnly="True"
@@ -131,7 +156,8 @@
                                     <Button Content="Скопировать адрес" Style="{StaticResource BaseButton}"
                                             Margin="0,10,0,0" Tag="{Binding Address}"
                                             IsEnabled="{Binding HasAddress}"
-                                            Click="OnCopyAddressClick"/>
+                                            Click="OnCopyAddressClick"
+                                            Visibility="{Binding HasAddress, Converter={StaticResource BoolToVisibility}}"/>
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
