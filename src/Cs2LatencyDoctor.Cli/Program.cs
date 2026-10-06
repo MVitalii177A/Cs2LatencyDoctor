@@ -38,6 +38,7 @@ var doResume = false;
 var assumeYes = false;
 var showJournal = false;
 var showPauseList = false;
+var clearHistory = false;
 var revertOneNumber = 0;
 string? exportPath = null;
 
@@ -82,6 +83,9 @@ for (var i = 0; i < args.Length; i++)
         case "--history":
             showHistory = true;
             break;
+        case "--history-clear":
+            clearHistory = true;
+            break;
         case "--pause":
             doPause = true;
             break;
@@ -107,6 +111,11 @@ if (selfTest)
 }
 
 // ------------------------------------------------------------------ история
+if (clearHistory)
+{
+    return HistoryCommand.Clear(assumeYes);
+}
+
 if (showHistory)
 {
     return HistoryCommand.Run();
@@ -158,31 +167,39 @@ if (showHelp)
         Cs2LatencyDoctor — диагностика и исправление причин задержек в CS2.
 
         Использование:
-          cs2latency [--seconds N] [--json]      только диагностика, ничего не меняет
-          cs2latency --plan                      что можно исправить (ничего не меняет)
-          cs2latency --fix                       применить безопасные исправления
-          cs2latency --revert                    вернуть всё как было
-        cs2latency --export FILE               сохранить отчёт в файл (.txt или .json)
-        cs2latency --journal                   что именно было изменено
-        cs2latency --revert-one N              вернуть одну запись из журнала
-          cs2latency --history                   история замеров и что изменилось
-          cs2latency --pause                     поставить фоновые программы на паузу
-        cs2latency --pause-list                файл со своим списком программ для паузы
-          cs2latency --resume                    вернуть фоновые программы обратно
-          cs2latency --selftest                  проверить логику оценки на записанных данных
+          cs2latency [--seconds N] [--json]   только диагностика, ничего не меняет
+          cs2latency --plan                   что можно исправить (ничего не меняет)
+          cs2latency --export FILE            сохранить отчёт: .txt для чтения, .json для обработки
+
+        Исправления (нужны права администратора):
+          cs2latency --fix                    применить исправления по найденному
+          cs2latency --revert                 вернуть всё как было
+          cs2latency --journal                что именно было изменено
+          cs2latency --revert-one N           вернуть одну запись из журнала
+
+        История замеров:
+          cs2latency --history                что улучшилось и что ухудшилось
+          cs2latency --history-clear          удалить историю замеров
+
+        Фоновые программы:
+          cs2latency --pause                  поставить на паузу
+          cs2latency --resume                 вернуть обратно
+          cs2latency --pause-list             файл со своим списком программ
+
+        Прочее:
+          cs2latency --selftest               проверить логику оценки на записанных данных
+          cs2latency --help                   эта справка
 
         Параметры:
           --seconds N   длительность замера сети в секундах (5..120, по умолчанию 20)
           --json        вывести отчёт в формате JSON
-          --yes         не спрашивать подтверждение (для --pause)
+          --yes         не спрашивать подтверждение (для --pause и --history-clear)
 
         Без параметров программа только читает состояние и показывает находки.
         При исправлении каждое изменённое значение сохраняется в журнал,
         поэтому --revert возвращает систему в исходное состояние.
 
         История замеров хранится ТОЛЬКО на этом компьютере и никуда не отправляется.
-
-        Для --fix и --revert нужны права администратора.
         """);
     return 0;
 }
@@ -1007,6 +1024,53 @@ internal static class JournalCommand
 }
 internal static class HistoryCommand
 {
+    /// <summary>
+    /// Удалить историю замеров. Спрашиваем подтверждение: файл небольшой,
+    /// но восстановить его нельзя, а человек мог нажать ключ по ошибке.
+    /// </summary>
+    public static int Clear(bool assumeYes)
+    {
+        var store = new HistoryStore();
+
+        Console.WriteLine();
+        Console.WriteLine("  УДАЛЕНИЕ ИСТОРИИ ЗАМЕРОВ");
+        Console.WriteLine("  " + new string('-', 70));
+        Console.WriteLine("  Файл: " + store.FilePathText);
+        Console.WriteLine();
+
+        var summary = store.Summarize();
+
+        if (!summary.HasHistory)
+        {
+            Console.WriteLine("  История и так пуста — удалять нечего.");
+            return 0;
+        }
+
+        Console.WriteLine($"  Будет удалено замеров: {summary.TotalRuns}");
+        Console.WriteLine($"  Период: {summary.FirstRun:dd.MM.yyyy} — {summary.LastRun:dd.MM.yyyy}");
+        Console.WriteLine();
+
+        if (!assumeYes)
+        {
+            Console.Write("  Удалить историю? Восстановить её будет нельзя. (y/n): ");
+            var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
+            if (answer is not ("y" or "yes" or "д" or "да"))
+            {
+                Console.WriteLine("  Отменено, история не тронута.");
+                return 0;
+            }
+        }
+
+        if (store.Clear())
+        {
+            Console.WriteLine("  История удалена.");
+            return 0;
+        }
+
+        Console.Error.WriteLine("  Не удалось удалить файл: возможно, он занят другой программой.");
+        return 4;
+    }
+
     public static int Run()
     {
         var store = new HistoryStore();

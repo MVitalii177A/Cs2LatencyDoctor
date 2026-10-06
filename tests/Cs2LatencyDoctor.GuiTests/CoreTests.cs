@@ -917,6 +917,20 @@ internal static class CoreTests
             store.Clear();
             foreach (var snapshot in before) store.Append(snapshot);
         });
+        RunTest(results, "Версия программы указана и читается", () =>
+        {
+            // Версия нужна, чтобы понять, какая сборка выдала отчёт: без неё
+            // невозможно разобраться, что человек видел на экране.
+            if (string.IsNullOrWhiteSpace(AppVersion.Short))
+                throw new InvalidOperationException("Короткая версия пуста");
+
+            if (!AppVersion.Short.Contains('.', StringComparison.Ordinal))
+                throw new InvalidOperationException($"Версия «{AppVersion.Short}» не похожа на номер версии");
+
+            if (!AppVersion.Display.Contains(AppVersion.Short, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Строка для интерфейса не содержит номер версии");
+        });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };

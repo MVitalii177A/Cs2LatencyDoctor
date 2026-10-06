@@ -11,9 +11,9 @@
     <RootNamespace>Cs2LatencyDoctor.Core</RootNamespace>
 
     <!-- Версия программы. Меняется здесь — и сразу видна в окне и в консоли. -->
-    <Version>1.0.0</Version>
-    <FileVersion>1.0.0.0</FileVersion>
-    <InformationalVersion>1.0.0</InformationalVersion>
+    <Version>1.1.0</Version>
+    <FileVersion>1.1.0.0</FileVersion>
+    <InformationalVersion>1.1.0</InformationalVersion>
   </PropertyGroup>
 
   <!--
