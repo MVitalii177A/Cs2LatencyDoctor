@@ -3,8 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Cs2LatencyDoctor.Gui"
         Title="Поблагодарить разработчиков"
-        Height="620" Width="520"
-        MinHeight="480" MinWidth="440"
+        Height="700" Width="940"
+        MinHeight="560" MinWidth="640"
         Background="#14151A"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip">
@@ -50,7 +50,7 @@
             <Setter Property="BorderBrush" Value="{StaticResource LineBrush}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="10"/>
-            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Padding" Value="14"/>
         </Style>
 
         <Style x:Key="SectionTitle" TargetType="TextBlock">
@@ -74,16 +74,22 @@
                        FontSize="19" FontWeight="Bold"/>
             <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12"
                        Margin="0,6,0,0"
-                       Text="Программа бесплатная и с открытым кодом. Платить ничего не нужно — все проверки и исправления работают полностью. Если она вам помогла и есть желание поддержать разработку, вот реквизиты."/>
+                       Text="Программа бесплатная и с открытым кодом. Платить ничего не нужно — все проверки и исправления работают полностью. Если она вам помогла и есть желание поддержать разработку, выберите удобный вариант."/>
         </StackPanel>
 
-        <!-- Кошельки и DonationAlerts -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <!-- Кошельки: карточки в ряд, при узком окне переносятся на новую строку -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel>
                 <ItemsControl x:Name="WalletList">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Style="{StaticResource Panel}" Margin="0,0,0,12">
+                            <Border Style="{StaticResource Panel}" Width="400" Margin="6">
                                 <StackPanel>
                                     <TextBlock Text="{Binding Title}" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock Text="{Binding NetworkText}" Foreground="#C9CBD3"
@@ -93,10 +99,10 @@
                                                Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}"/>
 
                                     <!-- QR-код из готовой картинки -->
-                                    <Border Background="White" CornerRadius="8" Padding="10"
+                                    <Border Background="White" CornerRadius="8" Padding="8"
                                             HorizontalAlignment="Center" Margin="0,12,0,10"
                                             Visibility="{Binding HasImage, Converter={StaticResource BoolToVisibility}}">
-                                        <Image Source="{Binding QrImage}" Width="180" Height="180"
+                                        <Image Source="{Binding QrImage}" Width="200" Height="200"
                                                RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                                     </Border>
 
@@ -108,10 +114,14 @@
                                                FontSize="11" Margin="0,0,0,4"/>
 
                                     <Border Background="#20222A" CornerRadius="6" Padding="4">
+                                        <!-- Моноширинный шрифт: в адресах важно различать
+                                             похожие символы (0 и O, 1 и l, 5 и S). -->
                                         <TextBox Text="{Binding Address, Mode=OneWay}" IsReadOnly="True"
                                                  BorderThickness="0" Background="Transparent"
                                                  Foreground="#E6E7EB" FontSize="12"
-                                                 FontFamily="Consolas" Padding="8" TextWrapping="Wrap"/>
+                                                 FontFamily="Consolas" Padding="8"
+                                                 TextWrapping="Wrap" MaxHeight="72"
+                                                 VerticalScrollBarVisibility="Auto"/>
                                     </Border>
 
                                     <Button Content="Скопировать адрес" Style="{StaticResource BaseButton}"
@@ -125,36 +135,47 @@
                 </ItemsControl>
 
                 <!-- DonationAlerts -->
-                <Border Style="{StaticResource Panel}">
-                    <StackPanel>
-                        <TextBlock Text="DonationAlerts — картой или из кошелька"
-                                   Style="{StaticResource SectionTitle}"/>
+                <Border Style="{StaticResource Panel}" Margin="6,6,6,0">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
-                        <TextBlock TextWrapping="Wrap" Foreground="#C9CBD3" FontSize="12"
-                                   Text="Откроется страница в браузере: можно поддержать разово или подписаться."/>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <TextBlock Text="DonationAlerts — картой или из кошелька"
+                                       Style="{StaticResource SectionTitle}"/>
+                            <TextBlock TextWrapping="Wrap" Foreground="#C9CBD3" FontSize="12"
+                                       Text="Откроется страница в браузере: можно поддержать разово или подписаться."/>
+                            <TextBlock x:Name="DonationAlertsMissingText" Foreground="#F5A524"
+                                       FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Visibility="Collapsed"/>
+                        </StackPanel>
 
-                        <Button x:Name="DonationAlertsButton" Content="Открыть DonationAlerts"
-                                Style="{StaticResource BaseButton}" Margin="0,12,0,0"
+                        <Button x:Name="DonationAlertsButton" Grid.Column="1" Content="Открыть DonationAlerts"
+                                Style="{StaticResource BaseButton}" VerticalAlignment="Center"
                                 Click="OnDonationAlertsClick"/>
-
-                        <TextBlock x:Name="DonationAlertsMissingText" Foreground="#F5A524"
-                                   FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
-                                   Visibility="Collapsed"/>
-                    </StackPanel>
+                    </Grid>
                 </Border>
 
                 <TextBlock Text="Проверьте сеть перед переводом: адрес одной сети не подходит для другой. Отправка не в ту сеть означает потерю средств."
-                           Foreground="#8B8D98" FontSize="11" TextWrapping="Wrap" Margin="0,12,0,0"/>
+                           Foreground="#8B8D98" FontSize="11" TextWrapping="Wrap" Margin="6,12,6,0"/>
             </StackPanel>
         </ScrollViewer>
 
         <!-- Низ -->
         <Border Grid.Row="2" Margin="0,14,0,0" Background="#1C1D23" CornerRadius="8" Padding="12,10">
-            <StackPanel>
-                <TextBlock x:Name="StatusText" Foreground="#30A46C" FontSize="12" TextWrapping="Wrap"/>
-                <Button Content="Закрыть" Style="{StaticResource BaseButton}"
-                        HorizontalAlignment="Right" Margin="0,10,0,0" Click="OnCloseClick"/>
-            </StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="StatusText" Grid.Column="0" Foreground="#30A46C" FontSize="12"
+                           TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <Button Grid.Column="1" Content="Закрыть" Style="{StaticResource BaseButton}"
+                        Click="OnCloseClick"/>
+            </Grid>
         </Border>
     </Grid>
 </Window>
