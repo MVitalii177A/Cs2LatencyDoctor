@@ -115,12 +115,39 @@
                               фактическим границам и остаётся целым.
                             -->
                             <Canvas Width="262" Height="568" Margin="1,6" ClipToBounds="False">
+                                <!--
+                                  Масштаб стоит на обёртке, а не на карточке. Тогда карточка
+                                  и подложка со свечением растут ВМЕСТЕ, сохраняя взаимное
+                                  расположение. Если масштабировать только карточку, она
+                                  выйдет за границы подложки, и свечение останется лишь
+                                  с одной стороны — это уже проверено замером.
+                                -->
                                 <Grid Width="262" Height="568" ClipToBounds="False">
-                                    <!-- Подложка: только свечение, сама ничего не рисует. -->
+                                    <Grid.RenderTransform>
+                                        <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"
+                                                        CenterX="131" CenterY="284"/>
+                                    </Grid.RenderTransform>
+
+                                    <!--
+                                      Подложка со свечением идёт ПЕРВОЙ, то есть рисуется
+                                      ПОД карточкой, а карточка перекрывает её собой.
+                                      Карточка остаётся видимой, наружу выступает только
+                                      свечение за её краями.
+
+                                      Фон непрозрачный, в тон панели. Это обязательно:
+                                      эффект в WPF строится по нарисованному содержимому,
+                                      и у Border с прозрачным фоном рисовать нечего — тень
+                                      не появляется вовсе. Проверено дважды: при Transparent
+                                      и при альфе 1 из 255 свечение пропадало полностью.
+                                    -->
                                     <Border x:Name="CardGlowHost"
-                                            Width="232" Height="510"
+                                            Width="204" Height="482"
                                             HorizontalAlignment="Center" VerticalAlignment="Center"
-                                            Background="Transparent" ClipToBounds="False">
+                                            ClipToBounds="False"
+                                            IsHitTestVisible="False">
+                                        <Border.Background>
+                                            <SolidColorBrush Color="#1C1D23"/>
+                                        </Border.Background>
                                         <Border.Effect>
                                             <DropShadowEffect x:Name="CardGlow"
                                                               Color="#FF8A24"
@@ -137,10 +164,6 @@
                                             ClipToBounds="False"
                                             MouseEnter="OnCardMouseEnter"
                                             MouseLeave="OnCardMouseLeave">
-                                        <Border.RenderTransform>
-                                            <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"/>
-                                        </Border.RenderTransform>
-
                                         <StackPanel VerticalAlignment="Top">
                                         <!--
                                           VerticalAlignment="Top" обязателен: без него

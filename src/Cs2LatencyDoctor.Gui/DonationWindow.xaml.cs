@@ -297,17 +297,18 @@ public partial class DonationWindow : Window
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
 
         // --- рост карточки ---
-        // Масштабируется карточка ЦЕЛИКОМ, вместе с содержимым. Поэтому растут
-        // и текст, и QR, и кнопка — всё выглядит как увеличение, а не как
-        // растягивание отдельных блоков.
+        // Масштабируется обёртка, в которой лежат и карточка, и подложка со
+        // свечением. Поэтому они растут вместе и взаимное расположение
+        // сохраняется: масштабировать одну карточку нельзя, она выйдет за
+        // границы подложки и свечение останется лишь с одной стороны.
         //
         // Место под увеличенный размер отведено заранее (ячейка Canvas),
         // поэтому соседние карточки не сдвигаются.
-        if (card.RenderTransform is ScaleTransform transform)
+        if (FindScaledHost(card) is { } host)
         {
-            transform.BeginAnimation(ScaleTransform.ScaleXProperty,
+            host.BeginAnimation(ScaleTransform.ScaleXProperty,
                 new DoubleAnimation(scale, duration) { EasingFunction = easing });
-            transform.BeginAnimation(ScaleTransform.ScaleYProperty,
+            host.BeginAnimation(ScaleTransform.ScaleYProperty,
                 new DoubleAnimation(scale, duration) { EasingFunction = easing });
         }
 
@@ -330,6 +331,16 @@ public partial class DonationWindow : Window
         // масштабируется. Иначе WPF посчитал бы эффект до масштаба и обрезал
         // ореол по исходному размеру карточки.
         AnimateGlow(FindGlowHost(card), glowRadius, glowOpacity, duration, easing);
+    }
+
+    /// <summary>
+    /// Найти масштаб обёртки, в которой лежат карточка и подложка со свечением.
+    /// </summary>
+    private static ScaleTransform? FindScaledHost(Border card)
+    {
+        if (VisualTreeHelper.GetParent(card) is not FrameworkElement wrapper) return null;
+
+        return wrapper.RenderTransform as ScaleTransform;
     }
 
     /// <summary>Найти подложку со свечением: она лежит рядом с карточкой в обёртке.</summary>
