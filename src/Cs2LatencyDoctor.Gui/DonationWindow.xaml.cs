@@ -147,19 +147,58 @@ public partial class DonationWindow : Window
     {
         if (!DonationInfo.HasDonationAlerts) return;
 
+        // Открываем двумя способами: если браузер по умолчанию настроен криво
+        // или падает, второй способ обычно срабатывает.
+        var opened = TryOpen(DonationInfo.DonationAlertsUrl, useShell: true);
+
+        if (!opened)
+            opened = TryOpen(DonationInfo.DonationAlertsUrl, useShell: false);
+
+        StatusText.Text = opened
+            ? "Страница открыта в браузере. Если браузер показал сообщение о падении — " +
+              "это его собственная проблема, скопируйте ссылку и откройте вручную."
+            : "Не удалось запустить браузер. Скопируйте ссылку кнопкой рядом " +
+              "и откройте её вручную: " + DonationInfo.DonationAlertsUrl;
+    }
+
+    /// <summary>
+    /// Попытка открыть ссылку. useShell: true — обычный способ через оболочку Windows,
+    /// false — через explorer.exe, который вызывает оболочку по-другому.
+    /// </summary>
+    private static bool TryOpen(string url, bool useShell)
+    {
         try
         {
-            Process.Start(new ProcessStartInfo
+            var info = new ProcessStartInfo
             {
-                FileName = DonationInfo.DonationAlertsUrl,
-                UseShellExecute = true
-            });
+                FileName = useShell ? url : "explorer.exe",
+                UseShellExecute = useShell
+            };
 
-            StatusText.Text = "Страница открыта в браузере.";
+            if (!useShell) info.Arguments = '"' + url + '"';
+
+            Process.Start(info);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void OnCopyLinkClick(object sender, RoutedEventArgs e)
+    {
+        if (!DonationInfo.HasDonationAlerts) return;
+
+        try
+        {
+            Clipboard.SetText(DonationInfo.DonationAlertsUrl);
+            StatusText.Text = "Ссылка скопирована: " + DonationInfo.DonationAlertsUrl +
+                              " — вставьте её в адресную строку браузера (Ctrl+V).";
         }
         catch (Exception ex)
         {
-            StatusText.Text = "Не удалось открыть браузер: " + ex.Message +
+            StatusText.Text = "Не удалось скопировать ссылку: " + ex.Message +
                               ". Ссылка: " + DonationInfo.DonationAlertsUrl;
         }
     }
