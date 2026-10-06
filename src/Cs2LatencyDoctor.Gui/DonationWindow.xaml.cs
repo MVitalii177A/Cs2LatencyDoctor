@@ -290,10 +290,6 @@ public partial class DonationWindow : Window
     /// <summary>Во сколько раз растёт карточка при наведении.</summary>
     private const double CardHoverScale = 1.10;
 
-    /// <summary>Размеры карточки в покое. При наведении растут на CardHoverScale.</summary>
-    private const double CardIdleWidth = 232;
-    private const double CardIdleHeight = 510;
-
     private static void AnimateCard(Border card, double scale, double borderOpacity,
         double glowRadius, double glowOpacity)
     {
@@ -301,18 +297,19 @@ public partial class DonationWindow : Window
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
 
         // --- рост карточки ---
-        // Растут Ширина и Высота, а не масштаб. Так содержимое перестраивается
-        // под новый размер и пропорции остаются правильными. При масштабе рамка
-        // осталась бы прежней, а содержимое вылезло за её края — карточка
-        // выглядела сломанной.
+        // Масштабируется карточка ЦЕЛИКОМ, вместе с содержимым. Поэтому растут
+        // и текст, и QR, и кнопка — всё выглядит как увеличение, а не как
+        // растягивание отдельных блоков.
         //
         // Место под увеличенный размер отведено заранее (ячейка Canvas),
-        // поэтому соседние карточки не сдвигаются. И побочно: эффект свечения
-        // WPF считает по фактическим границам, поэтому ореол остаётся целым.
-        card.BeginAnimation(FrameworkElement.WidthProperty,
-            new DoubleAnimation(CardIdleWidth * scale, duration) { EasingFunction = easing });
-        card.BeginAnimation(FrameworkElement.HeightProperty,
-            new DoubleAnimation(CardIdleHeight * scale, duration) { EasingFunction = easing });
+        // поэтому соседние карточки не сдвигаются.
+        if (card.RenderTransform is ScaleTransform transform)
+        {
+            transform.BeginAnimation(ScaleTransform.ScaleXProperty,
+                new DoubleAnimation(scale, duration) { EasingFunction = easing });
+            transform.BeginAnimation(ScaleTransform.ScaleYProperty,
+                new DoubleAnimation(scale, duration) { EasingFunction = easing });
+        }
 
         // --- подсветка рамки ---
         if (card.BorderBrush is SolidColorBrush)
@@ -329,13 +326,24 @@ public partial class DonationWindow : Window
         }
 
         // --- свечение сзади ---
-        // Анимируются только радиус и прозрачность: анимация самих параметров
-        // эффекта дешевле, чем подмена эффекта на каждый кадр.
-        AnimateGlow(card.Effect as DropShadowEffect, glowRadius, glowOpacity, duration, easing);
+        // Свечение живёт на отдельной подложке под карточкой, которая не
+        // масштабируется. Иначе WPF посчитал бы эффект до масштаба и обрезал
+        // ореол по исходному размеру карточки.
+        AnimateGlow(FindGlowHost(card), glowRadius, glowOpacity, duration, easing);
+    }
 
-        // Узкое ядро у краёв: размытие меньше, поэтому у карточки цвет теплее.
-        var core = (card.Child as FrameworkElement)?.Effect as DropShadowEffect;
-        AnimateGlow(core, glowRadius * 0.45, glowOpacity * 0.9, duration, easing);
+    /// <summary>Найти подложку со свечением: она лежит рядом с карточкой в обёртке.</summary>
+    private static DropShadowEffect? FindGlowHost(Border card)
+    {
+        if (VisualTreeHelper.GetParent(card) is not Panel wrapper) return null;
+
+        foreach (var child in wrapper.Children)
+        {
+            if (child is Border { Name: "CardGlowHost" } host)
+                return host.Effect as DropShadowEffect;
+        }
+
+        return null;
     }
 
     /// <summary>Плавно перевести слой свечения в заданное состояние.</summary>

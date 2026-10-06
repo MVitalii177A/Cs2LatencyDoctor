@@ -100,47 +100,48 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <!--
-                              Карточка стоит по ЦЕНТРУ ячейки, а ячейка заранее отведена
-                              по размеру увеличенной карточки. Поэтому при росте карточка
-                              расширяется во все стороны от центра, а не уползает вправо,
-                              и при этом не сдвигает соседей.
+                              Карточка стоит по ЦЕНТРУ ячейки, ячейка отведена по размеру
+                              увеличенной карточки. Поэтому рост идёт во все стороны от
+                              центра и не сдвигает соседей.
 
-                              Растут сами Ширина и Высота карточки, а не масштаб: так
-                              содержимое перестраивается под новый размер и пропорции
-                              остаются правильными.
+                              Растёт карточка ЦЕЛИКОМ — вместе с содержимым. Для этого
+                              масштаб применяется к самой карточке, а свечение вынесено
+                              на отдельную подложку под ней.
 
-                              Побочная выгода: эффект свечения WPF считает по фактическим
-                              границам, поэтому при росте карточки ореол остаётся целым.
+                              Почему свечение не на карточке: WPF считает эффект до
+                              применения масштаба. Если эффект и масштаб на одном элементе,
+                              ореол обрезается по исходному размеру — это мы уже проходили.
+                              Подложка не масштабируется, поэтому её эффект считается по
+                              фактическим границам и остаётся целым.
                             -->
                             <Canvas Width="262" Height="568" Margin="1,6" ClipToBounds="False">
-                                <Border Style="{StaticResource Panel}"
-                                        Width="232" Height="510"
-                                        Canvas.Left="15" Canvas.Top="29"
-                                        ClipToBounds="False"
-                                        MouseEnter="OnCardMouseEnter"
-                                        MouseLeave="OnCardMouseLeave">
-                                    <!--
-                                      Свечение сзади карточки: тёплое, оранжевое.
-                                      Размытие подобрано так, чтобы ореол был ярким и
-                                      плотным у самых краёв: при большом размытии он
-                                      расползается и у края становится еле заметным,
-                                      из-за чего выглядит обрезанным. Направление вниз
-                                      даёт эффект подсветки из-под карточки.
+                                <Grid Width="262" Height="568" ClipToBounds="False">
+                                    <!-- Подложка: только свечение, сама ничего не рисует. -->
+                                    <Border x:Name="CardGlowHost"
+                                            Width="232" Height="510"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Background="Transparent" ClipToBounds="False">
+                                        <Border.Effect>
+                                            <DropShadowEffect x:Name="CardGlow"
+                                                              Color="#FF8A24"
+                                                              BlurRadius="0"
+                                                              ShadowDepth="0"
+                                                              Opacity="0"
+                                                              Direction="270"/>
+                                        </Border.Effect>
+                                    </Border>
 
-                                      Цвет плавно перетекает из янтарного у карточки
-                                      в насыщенный оранжевый дальше — так свечение
-                                      выглядит тёплым, а не плоской заливкой.
-                                    -->
-                                    <Border.Effect>
-                                        <DropShadowEffect x:Name="CardGlow"
-                                                          Color="#FF8A24"
-                                                          BlurRadius="0"
-                                                          ShadowDepth="0"
-                                                          Opacity="0"
-                                                          Direction="270"/>
-                                    </Border.Effect>
+                                    <Border Style="{StaticResource Panel}"
+                                            Width="232" Height="510"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            ClipToBounds="False"
+                                            MouseEnter="OnCardMouseEnter"
+                                            MouseLeave="OnCardMouseLeave">
+                                        <Border.RenderTransform>
+                                            <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"/>
+                                        </Border.RenderTransform>
 
-                                    <StackPanel VerticalAlignment="Top">
+                                        <StackPanel VerticalAlignment="Top">
                                         <!--
                                           VerticalAlignment="Top" обязателен: без него
                                           StackPanel растягивается по высоте карточки и
@@ -199,8 +200,9 @@
                                             IsEnabled="{Binding HasAddress}"
                                             Click="OnCopyAddressClick"
                                             Visibility="{Binding HasAddress, Converter={StaticResource BoolToVisibility}}"/>
-                                    </StackPanel>
-                                </Border>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
                             </Canvas>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
