@@ -118,7 +118,13 @@ public sealed class MemoryCheck : IDiagnosticCheck
                     : $"Занято все {slots} слотов. Всего {totalGb:0} ГБ",
                 Why = free > 0
                     ? "Свободные слоты позволяют добавить память, не выбрасывая уже установленные планки."
-                    : "Свободных слотов нет: для увеличения памяти придётся менять планки."
+                    : "Свободных слотов нет: для увеличения памяти придётся менять планки.",
+                Metrics = new Dictionary<string, double>
+                {
+                    ["modules"] = modules.Count,
+                    ["slots_total"] = slots,
+                    ["total_gb"] = Math.Round(totalGb, 1)
+                }
             });
         }
 
@@ -150,8 +156,14 @@ public sealed class MemoryCheck : IDiagnosticCheck
         {
             var sample = modules.First(m => m.RatedSpeedMhz > 0);
 
-            results.Add(CheckResult.Ok(Id + ".speed", "Частота памяти",
-                $"Работает на заявленной частоте {sample.ActualSpeedMhz} МГц"));
+            results.Add(new CheckResult
+            {
+                Id = Id + ".speed",
+                Title = "Частота памяти",
+                Severity = Severity.Ok,
+                Detail = $"Работает на заявленной частоте {sample.ActualSpeedMhz} МГц",
+                Metrics = new Dictionary<string, double> { ["speed_mhz"] = sample.ActualSpeedMhz }
+            });
         }
 
         return Task.FromResult<IReadOnlyList<CheckResult>>(results);

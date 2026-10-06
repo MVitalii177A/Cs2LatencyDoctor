@@ -3,6 +3,7 @@ using Cs2LatencyDoctor.Core;
 using Cs2LatencyDoctor.Core.Background;
 using Cs2LatencyDoctor.Core.Checks;
 using Cs2LatencyDoctor.Core.Fixes;
+using Cs2LatencyDoctor.Core.History;
 using Cs2LatencyDoctor.Core.Report;
 using Cs2LatencyDoctor.Core.Windows;
 using Cs2LatencyDoctor.Gui;
@@ -869,6 +870,52 @@ internal static class CoreTests
                 if (preselected.Any(a => !a.FoundByActivity))
                     throw new InvalidOperationException("Признак «найдена по нагрузке» потерялся");
             }
+        });
+        RunTest(results, "Сравнение замеров отвечает на вопрос «что изменилось сейчас»", () =>
+        {
+            // Разница принципиальная: сводка истории сравнивает ПЕРВЫЙ замер
+            // с последним («помогло ли за всё время»), а сравнение последних двух
+            // показывает, что дали только что применённые исправления.
+            var store = new HistoryStore();
+            var before = store.Read();
+
+            var first = new HistorySnapshot
+            {
+                Summary = "проверочный замер 1",
+                Metrics = new Dictionary<string, Dictionary<string, double>>
+                {
+                    ["net.latency.gateway"] = new() { ["spike_percent"] = 9.5, ["median_ms"] = 2.0 }
+                },
+                Titles = new Dictionary<string, string> { ["net.latency.gateway"] = "Задержка до роутера" }
+            };
+
+            var second = new HistorySnapshot
+            {
+                Summary = "проверочный замер 2",
+                Metrics = new Dictionary<string, Dictionary<string, double>>
+                {
+                    ["net.latency.gateway"] = new() { ["spike_percent"] = 0.0, ["median_ms"] = 2.0 }
+                },
+                Titles = new Dictionary<string, string> { ["net.latency.gateway"] = "Задержка до роутера" }
+            };
+
+            store.Append(first);
+            store.Append(second);
+
+            var comparison = store.CompareLastTwo();
+
+            if (!comparison.Improved.Any(t => t.MetricName == "spike_percent"))
+                throw new InvalidOperationException(
+                    "Уменьшение всплесков с 9.5% до 0% не показано как улучшение");
+
+            // Метрика без изменений не должна попадать ни в улучшения, ни в ухудшения.
+            if (comparison.Improved.Any(t => t.MetricName == "median_ms") ||
+                comparison.Worsened.Any(t => t.MetricName == "median_ms"))
+                throw new InvalidOperationException("Метрика без изменений показана как изменение");
+
+            // Возвращаем файл истории в прежнее состояние, чтобы не портить данные.
+            store.Clear();
+            foreach (var snapshot in before) store.Append(snapshot);
         });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {

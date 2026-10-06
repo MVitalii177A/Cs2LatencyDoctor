@@ -221,6 +221,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0" Style="{StaticResource Panel}" Margin="0,0,0,12">
@@ -346,7 +347,19 @@
                     </DockPanel>
                 </Border>
 
-                <Border Grid.Row="4" Style="{StaticResource Panel}">
+                <!--
+                  Сравнение с предыдущим замером. Отдельно от истории: история отвечает
+                  на вопрос «помогло ли за всё время», а здесь — «что изменилось сейчас».
+                -->
+                <Border Grid.Row="4" Style="{StaticResource Panel}" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="{Binding BeforeAfterTitle}" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="{Binding BeforeAfterText}" Foreground="#C9CBD3"
+                                   FontSize="11" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Row="5" Style="{StaticResource Panel}">
                     <StackPanel>
                         <TextBlock Text="ЧТО ПРОИЗОШЛО" Style="{StaticResource SectionTitle}"/>
                         <TextBlock Text="{Binding ApplyResult}" Foreground="#C9CBD3"

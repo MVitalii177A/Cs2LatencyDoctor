@@ -88,6 +88,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>Что программа уже изменила: видно, что и когда, с возможностью вернуть по одному.</summary>
     public ObservableCollection<JournalRow> Journal { get; } = new();
 
+    /// <summary>Что изменилось с прошлого замера: отдельно от истории за всё время.</summary>
+    private string _beforeAfterText = string.Empty;
+    public string BeforeAfterText
+    {
+        get => _beforeAfterText;
+        set { _beforeAfterText = value; OnPropertyChanged(); }
+    }
+
+    private string _beforeAfterTitle = "ПОСЛЕ ИСПРАВЛЕНИЙ";
+    public string BeforeAfterTitle
+    {
+        get => _beforeAfterTitle;
+        set { _beforeAfterTitle = value; OnPropertyChanged(); }
+    }
+
     public bool HasManualFixes => ManualFixes.Count > 0;
     public bool HasJournal => Journal.Count > 0;
 
@@ -357,6 +372,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 HistoryText = "Это первый замер — сравнить пока не с чем. Следующие запуски покажут изменения.";
             }
+
+            // Сравнение с ПРЕДЫДУЩИМ замером, а не с первым за всё время.
+            // Человеку нужен ответ на вопрос «что изменилось после того, как я применил
+            // исправления», а сводка истории отвечает на другой — «помогло ли за всё
+            // время вообще». Это разные вопросы, и путать их нельзя.
+            UpdateBeforeAfter();
         }
         catch (Exception ex)
         {
@@ -423,6 +444,75 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         OnPropertyChanged(nameof(ApplyResult));
     }
+    /// <summary>
+    /// Сравнить последний замер с предыдущим и показать разницу словами.
+    /// Это ответ на вопрос «что изменилось после применённых исправлений».
+    /// </summary>
+    private void UpdateBeforeAfter()
+    {
+        var comparison = _history.CompareLastTwo();
+
+        if (!comparison.HasHistory || (comparison.Improved.Count == 0 && comparison.Worsened.Count == 0))
+        {
+            BeforeAfterTitle = "ПОСЛЕ ИСПРАВЛЕНИЙ";
+            BeforeAfterText = "Сравнивать пока не с чем: нужны два замера. " +
+                              "Нажмите «Проверить компьютер» ещё раз после исправлений.";
+            return;
+        }
+
+        var lines = new List<string>();
+
+        foreach (var trend in comparison.Improved)
+            lines.Add($"↓ {trend.Title}: {DescribeTrend(trend)}");
+
+        foreach (var trend in comparison.Worsened)
+            lines.Add($"↑ {trend.Title}: {DescribeTrend(trend)}");
+
+        BeforeAfterTitle = comparison.Worsened.Count > 0
+            ? "ПОСЛЕ ИСПРАВЛЕНИЙ: ЕСТЬ УХУДШЕНИЯ"
+            : "ПОСЛЕ ИСПРАВЛЕНИЙ: СТАЛО ЛУЧШЕ";
+
+        BeforeAfterText = string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>
+    /// Описать изменение человеческим языком. Имя метрики в коде («spike_percent»)
+    /// ничего не говорит тому, кто читает окно, поэтому переводим.
+    /// </summary>
+    private static string DescribeTrend(MetricTrend trend)
+    {
+        var title = trend.MetricName switch
+        {
+            "spike_percent" => "всплески",
+            "loss_percent" => "потери",
+            "stddev_ms" => "разброс",
+            "max_ms" => "максимум",
+            "median_ms" => "медиана",
+            "free_percent" => "свободное место",
+            "free_gb" => "свободное место",
+            "speed_mhz" => "частота",
+            "modules" => "планок памяти",
+            "slots_total" => "всего слотов",
+            "total_gb" => "объём памяти",
+            "link_speed_mbps" => "скорость линка",
+            "kill_count" => "проверок",
+            _ => trend.MetricName
+        };
+
+        var unit = trend.MetricName switch
+        {
+            "spike_percent" or "loss_percent" or "free_percent" => "%",
+            "stddev_ms" or "max_ms" or "median_ms" => " мс",
+            "speed_mhz" => " МГц",
+            "free_gb" or "total_gb" => " ГБ",
+            "slots_total" or "modules" or "kill_count" => string.Empty,
+            "link_speed_mbps" => " Мбит/с",
+            _ => string.Empty
+        };
+
+        return $"было {trend.FirstValue:0.#}{unit}, стало {trend.LastValue:0.#}{unit}";
+    }
+
     /// <summary>Собрать строки журнала для показа в окне.</summary>
     private static List<JournalRow> BuildJournalRows()
     {

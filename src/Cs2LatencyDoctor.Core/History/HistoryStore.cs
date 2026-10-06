@@ -213,6 +213,61 @@ public sealed class HistoryStore
         };
     }
 
+    /// <summary>
+    /// Сравнить последний замер с предыдущим: что изменилось с прошлого раза.
+    ///
+    /// Зачем отдельно от Summarize. Summarize сравнивает ПЕРВЫЙ замер с последним:
+    /// это ответ на вопрос «помогло ли вообще за всё время». А здесь нужно другое —
+    /// «что изменилось после того, как я применил исправления», и для этого годится
+    /// только пара соседних замеров.
+    ///
+    /// Сравниваются все числовые метрики, а не только сетевые: раньше в истории
+    /// были одни задержки, потому что другие проверки метрик не заполняли.
+    /// </summary>
+    public HistorySummary CompareLastTwo()
+    {
+        var all = Read();
+        if (all.Count < 2) return new HistorySummary { TotalRuns = all.Count };
+
+        var previous = all[^2];
+        var last = all[^1];
+
+        var trends = new List<MetricTrend>();
+
+        foreach (var checkId in last.Metrics.Keys)
+        {
+            if (!previous.Metrics.TryGetValue(checkId, out var previousMetrics)) continue;
+
+            var title = last.Titles.TryGetValue(checkId, out var t) ? t : checkId;
+
+            foreach (var (metricName, lastValue) in last.Metrics[checkId])
+            {
+                if (!previousMetrics.TryGetValue(metricName, out var previousValue)) continue;
+
+                // Пропускаем метрики-счётчики: «сколько раз делали попыток» — это
+                // не то, что человек хочет видеть как улучшение или ухудшение.
+                if (metricName.EndsWith("_attempts", StringComparison.Ordinal)) continue;
+
+                // Метрика с нулём в обоих замерах ничего не показывает.
+                if (Math.Abs(previousValue) < 0.0001 && Math.Abs(lastValue) < 0.0001) continue;
+
+                trends.Add(new MetricTrend(checkId, title, metricName,
+                    previousValue, lastValue, all.Count));
+            }
+        }
+
+        return new HistorySummary
+        {
+            TotalRuns = all.Count,
+            FirstRun = previous.Timestamp,
+            LastRun = last.Timestamp,
+            DaysTracked = Math.Max(0, (int)Math.Round((last.Timestamp - previous.Timestamp).TotalDays)),
+            RunsWithProblems = all.Count(s => s.ProblemCount > 0),
+            Improved = trends.Where(t => t.Improved).ToList(),
+            Worsened = trends.Where(t => t.Worsened).ToList()
+        };
+    }
+
     /// <summary>Ограничить размер файла, отбросив самые старые записи.</summary>
     private void TrimIfNeeded(string path)
     {
