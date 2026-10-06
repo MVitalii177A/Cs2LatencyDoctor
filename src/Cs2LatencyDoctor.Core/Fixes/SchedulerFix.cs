@@ -30,7 +30,7 @@ public sealed class SchedulerFix : FixBase
         ("Clock Rate", "10000", false)
     };
 
-    public override FixResult Apply(DiagnosticContext context, UndoJournal journal)
+    public override FixResult Apply(DiagnosticContext context, UndoJournal journal, FixPlan plan)
     {
         if (!RegistryValueReader.KeyExists(RegistryHive.LocalMachine, GamesTaskPath))
             return FixResult.Skipped(Id, Title, "Ветка планировщика игр не найдена в системе");
@@ -40,6 +40,10 @@ public sealed class SchedulerFix : FixBase
 
         foreach (var (name, target, _) in Targets)
         {
+            // Меняем только те значения, на которые указала проверка: одно исправление
+            // закрывает пять параметров, а находка может касаться одного.
+            if (!plan.WantsSubAction(Id, Id + "." + name)) continue;
+
             var oldValue = RegistryValueReader.ReadRawString(RegistryHive.LocalMachine, GamesTaskPath, name);
 
             if (string.Equals(oldValue, target, StringComparison.OrdinalIgnoreCase))
@@ -72,7 +76,9 @@ public sealed class SchedulerFix : FixBase
         var throttleOld = RegistryValueReader.ReadDword(RegistryHive.LocalMachine, SystemProfilePath, throttleName);
         const string throttleTarget = "4294967295";
 
-        if (throttleOld is not null && throttleOld.Value != unchecked((int)0xFFFFFFFF))
+        var throttleWanted = plan.WantsSubAction(Id, Id + "." + throttleName);
+
+        if (throttleWanted && throttleOld is not null && throttleOld.Value != unchecked((int)0xFFFFFFFF))
         {
             if (RegistryValueReader.WriteValue(RegistryHive.LocalMachine, SystemProfilePath,
                     throttleName, throttleTarget))

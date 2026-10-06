@@ -16,7 +16,7 @@ public sealed class UsbPowerFix : FixBase
     public override string Id => "power.usb.suspend";
     public override string Title => "Запретить отключение USB-портов для экономии энергии";
 
-    public override FixResult Apply(DiagnosticContext context, UndoJournal journal)
+    public override FixResult Apply(DiagnosticContext context, UndoJournal journal, FixPlan plan)
     {
         var state = PowerConfigReader.Read();
         if (state.UsbSelectiveSuspendAc is null && state.UsbSelectiveSuspendDc is null)

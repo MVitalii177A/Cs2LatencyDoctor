@@ -13,6 +13,9 @@ public sealed class SchedulerCheck : IDiagnosticCheck
     private const string SystemProfilePath =
         @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile";
 
+    /// <summary>Идентификатор исправления, которое правит эти параметры.</summary>
+    private const string FixId = "scheduler.mmcss";
+
     public string Id => "scheduler.mmcss";
     public string Title => "Планировщик мультимедиа и сетевой троттлинг";
     public bool RequiresAdmin => false;
@@ -34,12 +37,23 @@ public sealed class SchedulerCheck : IDiagnosticCheck
             SystemProfilePath, "NetworkThrottlingIndex");
 
         // --- MMCSS: категория планирования для игр ---
+        // В одном исправлении пять параметров. Указываем подпункты, чтобы программа
+        // меняла только те, на которые действительно жалуется проверка.
         var fixes = new List<FixAction>();
-        if (!string.Equals(category, "High", StringComparison.OrdinalIgnoreCase) ||
-            priority is null || priority < 6)
+        if (!string.Equals(category, "High", StringComparison.OrdinalIgnoreCase))
         {
-            fixes.Add(new FixAction("scheduler.mmcss.games", "Поднять приоритет игр в MMCSS", FixRisk.Safe,
-                "Обратимо. Влияние умеренное — это не главный источник лага, но убирает лишнюю конкуренцию за CPU."));
+            fixes.Add(new FixAction("scheduler.mmcss.games", "Поднять категорию планирования игр",
+                FixRisk.Safe,
+                "Обратимо. Влияние умеренное — это не главный источник лага, но убирает лишнюю конкуренцию за CPU.",
+                SubActionId: FixId + ".Scheduling Category"));
+        }
+
+        if (priority is null || priority < 6)
+        {
+            fixes.Add(new FixAction("scheduler.mmcss.games", "Поднять приоритет игр в планировщике",
+                FixRisk.Safe,
+                "Обратимо. Влияние умеренное — это не главный источник лага, но убирает лишнюю конкуренцию за CPU.",
+                SubActionId: FixId + ".Priority"));
         }
 
         if (fixes.Count > 0)
@@ -67,8 +81,9 @@ public sealed class SchedulerCheck : IDiagnosticCheck
                 $"NetworkThrottlingIndex = {throttling} (по умолчанию 10 пакетов/мс)",
                 "Ограничивает обработку сетевых пакетов во время воспроизведения мультимедиа. " +
                 "На UDP-трафик игры влияет слабо, но убрать ограничение безвредно.",
-                new[] { new FixAction("scheduler.throttle.off",
-                    "Отключить NetworkThrottlingIndex", FixRisk.Safe, "Обратимо.") },
+                new[] { new FixAction("scheduler.mmcss", "Отключить NetworkThrottlingIndex",
+                    FixRisk.Safe, "Обратимо.",
+                    SubActionId: FixId + ".NetworkThrottlingIndex") },
                 "Программа сделает это сама при «Применить исправления». " +
                 "Ожидать чуда не стоит: на игру это влияет слабо — правка убирает ограничение, " +
                 "которое в основном касается пропускной способности, а не задержки."));

@@ -269,6 +269,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 foreach (var row in rows) Findings.Add(row);
             });
 
+            // Запоминаем сами находки, а не только строки для показа: по ним
+            // собирается план исправлений, чтобы применять ровно найденное.
+            _lastFindings = report.Results;
+
             Summary = report.Summary;
             Status = $"Готово за {report.Duration.TotalSeconds:0.#} с";
 
@@ -300,10 +304,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string ApplyResult { get; private set; } = string.Empty;
 
+    /// <summary>Находки последней проверки: по ним собирается план исправлений.</summary>
+    private IReadOnlyList<CheckResult> _lastFindings = Array.Empty<CheckResult>();
+
+    /// <summary>
+    /// Что именно применять. Если проверка ещё не выполнялась, план пуст и программа
+    /// применит всё, что умеет: так честнее, чем молча ничего не сделать.
+    /// </summary>
+    private FixPlan BuildPlan() =>
+        _lastFindings.Count == 0 ? FixPlan.Everything : FixPlan.FromFindings(_lastFindings);
+
     public void ApplyFixes()
     {
         if (IsBusy) return;
-
         if (!IsAdministrator)
         {
             ApplyResult = "Нужны права администратора: закройте программу и запустите её от имени администратора.";
@@ -334,7 +347,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     return;
                 }
 
-                var report = FixRunner.CreateDefault(FixSelection.Safe).ApplyAll(context, journal);
+                // План собирается из последних находок: применяем ровно то, на что жаловалась
+                // диагностика, а не весь набор исправлений целиком.
+                var plan = BuildPlan();
+
+                if (!plan.IsEmpty)
+                    Status = "К применению: " + plan.Describe();
+
+                var report = FixRunner.CreateDefault(FixSelection.Safe).ApplyAll(context, journal, plan);
 
                 ApplyResult = string.Join(Environment.NewLine, report.Results.Select(r => r.Outcome switch
                 {

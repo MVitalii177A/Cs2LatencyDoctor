@@ -16,7 +16,7 @@ public sealed class NetworkAdapterFix : FixBase
     public override string Id => "net.adapter.hostile-settings";
     public override string Title => "Отключить энергосбережение и модерацию прерываний на сетевой карте";
 
-    public override FixResult Apply(DiagnosticContext context, UndoJournal journal)
+    public override FixResult Apply(DiagnosticContext context, UndoJournal journal, FixPlan plan)
     {
         var adapter = ResolveAdapter(context);
         if (adapter is null)
@@ -27,10 +27,19 @@ public sealed class NetworkAdapterFix : FixBase
             return FixResult.AlreadyOk(Id, Title,
                 $"На адаптере «{adapter.Description}» все параметры уже выставлены правильно");
 
+        // План приходит из находок проверки. Если она указала на конкретные параметры
+        // (например, только модерацию прерываний), меняем только их, а не все семь.
+        var selected = hostile.Keys
+            .Where(keyword => plan.WantsSubAction(Id, Id + "." + keyword))
+            .ToList();
+
+        if (selected.Count == 0)
+            return FixResult.AlreadyOk(Id, Title, "Выбранные параметры менять не требуется");
+
         var changes = new List<JournalEntry>();
         var failed = new List<string>();
 
-        foreach (var keyword in hostile.Keys)
+        foreach (var keyword in selected)
         {
             var oldValue = RegistryValueReader.ReadAdapterKeywordRaw(adapter.Description, keyword);
             if (oldValue is null) continue;

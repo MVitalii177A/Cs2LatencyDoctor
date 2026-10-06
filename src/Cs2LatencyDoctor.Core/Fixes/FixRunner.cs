@@ -66,8 +66,15 @@ public sealed class FixRunner
         return runner;
     }
 
-    public FixReport ApplyAll(DiagnosticContext context, UndoJournal journal)
+    /// <summary>
+    /// Применить исправления из плана. План собирается из находок диагностики, поэтому
+    /// программа делает ровно то, что нашла. Пустой план означает «применить всё,
+    /// что программа умеет» — так работает консоль без предварительной проверки.
+    /// </summary>
+    public FixReport ApplyAll(DiagnosticContext context, UndoJournal journal, FixPlan? plan = null)
     {
+        plan ??= FixPlan.Everything;
+
         var results = new List<FixResult>();
 
         // Если журнал записать некуда, менять настройки НЕЛЬЗЯ: откат станет невозможен.
@@ -81,6 +88,9 @@ public sealed class FixRunner
 
         foreach (var fix in _fixes)
         {
+            // Исправление, которого нет в плане, пропускаем: находки его не просили.
+            if (!plan.WantsFix(fix.Id)) continue;
+
             context.Progress($"Применяю: {fix.Title}…");
 
             try
@@ -92,12 +102,18 @@ public sealed class FixRunner
                     continue;
                 }
 
-                results.Add(fix.Apply(context, journal));
+                results.Add(fix.Apply(context, journal, plan));
             }
             catch (Exception ex)
             {
                 results.Add(FixResult.Failed(fix.Id, fix.Title, "Исключение: " + ex.Message));
             }
+        }
+
+        if (results.Count == 0)
+        {
+            results.Add(FixResult.AlreadyOk("plan", "Исправления",
+                "По результатам проверки применять нечего: всё уже настроено правильно"));
         }
 
         return new FixReport { Results = results, JournalPath = journal.FilePath };

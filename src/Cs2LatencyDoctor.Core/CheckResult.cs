@@ -37,11 +37,31 @@ public enum FixRisk
 /// <param name="Title">Что делаем, человеческим языком.</param>
 /// <param name="Risk">Можно ли применять автоматически.</param>
 /// <param name="Note">Чем придётся заплатить или почему это ручная операция.</param>
+/// <param name="SubActionId">
+/// Уточнение внутри общего исправления: например, конкретный параметр драйвера,
+/// когда одно исправление закрывает сразу семь настроек.
+/// Нужно, чтобы можно было применить и откатить ровно то, что нашла проверка,
+/// а не весь набор целиком.
+/// </param>
+/// <param name="CannotFixNote">
+/// Почему программа не может сделать это сама, даже если риск помечен как безопасный.
+/// Заполняется там, где настройка правится только через меню игры или панель драйвера:
+/// обещать кнопку, которой нет, нельзя.
+/// </param>
 public sealed record FixAction(
     string Id,
     string Title,
     FixRisk Risk,
-    string? Note = null);
+    string? Note = null,
+    string? SubActionId = null,
+    string? CannotFixNote = null)
+{
+    /// <summary>Можно ли применить это действие по кнопке прямо сейчас.</summary>
+    public bool CanApplyAutomatically => Risk != FixRisk.ManualOnly && CannotFixNote is null;
+
+    /// <summary>Что показать вместо кнопки, если применить нельзя.</summary>
+    public string? WhyNotAutomatic => CannotFixNote ?? (Risk == FixRisk.ManualOnly ? Note : null);
+}
 
 /// <summary>Почему программа не может помочь в этом случае. Нужно, чтобы «не могу» было объяснено, а не молчало.</summary>
 public enum NoHelpReason
@@ -105,7 +125,18 @@ public sealed class CheckResult
     public bool HasRecommendation => !string.IsNullOrWhiteSpace(Recommendation);
 
     /// <summary>Может ли программа исправить это сама.</summary>
-    public bool CanFixItself => Fixes.Any(f => f.Risk != FixRisk.ManualOnly);
+    public bool CanFixItself => Fixes.Any(f => f.CanApplyAutomatically);
+
+    /// <summary>
+    /// Действия, которые программа применит по кнопке. Пустой список означает,
+    /// что всё делается руками — и об этом честно сказано в отчёте.
+    /// </summary>
+    public IReadOnlyList<FixAction> ApplicableFixes =>
+        Fixes.Where(f => f.CanApplyAutomatically).ToList();
+
+    /// <summary>Действия, которые придётся выполнить самому, с причиной почему.</summary>
+    public IReadOnlyList<FixAction> ManualFixes =>
+        Fixes.Where(f => !f.CanApplyAutomatically).ToList();
 
     public static CheckResult Ok(string id, string title, string detail, string? why = null,
         string? recommendation = null) =>

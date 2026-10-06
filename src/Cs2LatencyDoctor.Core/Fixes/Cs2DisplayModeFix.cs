@@ -45,7 +45,7 @@ public sealed class Cs2DisplayModeFix : FixBase
         return null;
     }
 
-    public override FixResult Apply(DiagnosticContext context, UndoJournal journal)
+    public override FixResult Apply(DiagnosticContext context, UndoJournal journal, FixPlan plan)
     {
         var install = Cs2Locator.Find();
         if (install?.VideoSettings is null)

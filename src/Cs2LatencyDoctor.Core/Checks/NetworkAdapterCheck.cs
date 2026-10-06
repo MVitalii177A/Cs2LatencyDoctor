@@ -9,6 +9,9 @@ namespace Cs2LatencyDoctor.Core.Checks;
 public sealed class NetworkAdapterCheck : IDiagnosticCheck
 {
     public string Id => "net.adapter";
+
+    /// <summary>Идентификатор исправления настроек адаптера: с ним сверяется кнопка применения.</summary>
+    private const string FixId = "net.adapter.hostile-settings";
     public string Title => "Настройки сетевого адаптера";
     public bool RequiresAdmin => false;
 
@@ -20,14 +23,14 @@ public sealed class NetworkAdapterCheck : IDiagnosticCheck
         var adapters = NetworkAdapterReader.GetActiveAdapters();
         if (adapters.Count == 0)
         {
-            // Список адаптеров читается через WMI. Пустой список — это не «всё хорошо»,
-            // а «мы не смогли посмотреть». Правило проекта: объясняем причину и что делать.
+            // Пустой список — это не «всё хорошо», а «мы не смогли посмотреть».
+            // Правило проекта: объясняем причину и что делать.
             results.Add(CheckResult.Skipped(Id, Title,
-                "Не удалось получить список сетевых адаптеров через WMI",
+                "Система не отдала список сетевых адаптеров",
                 NoHelpReason.BlockedBySystem,
                 "Программа не может проверить настройки сетевой карты: система не отдала список " +
-                "адаптеров. Обычные причины — остановлена служба WMI, антивирус ограничивает " +
-                "запросы, либо сеть сейчас отключена. Что делать: " +
+                "адаптеров. Обычные причины — сеть сейчас отключена, адаптер выключен в диспетчере " +
+                "устройств, либо доступ ограничил антивирус. Что делать: " +
                 "1) убедитесь, что интернет работает и адаптер включён; " +
                 "2) откройте «Службы» (services.msc) и проверьте, что «Инструментарий управления " +
                 "Windows» (Winmgmt) запущен; " +
@@ -131,10 +134,13 @@ public sealed class NetworkAdapterCheck : IDiagnosticCheck
                 : "Эти параметры переводят сетевую карту в энергосберегающие режимы, из-за которых " +
                   "отклик становится неровным.";
 
+            // Идентификатор исправления должен совпадать с тем, что умеет NetworkAdapterFix,
+            // иначе кнопка не найдёт обработчик. Конкретный параметр указываем подпунктом.
             var fixList = hostile.Keys
-                .Select(k => new FixAction("net.adapter." + k,
+                .Select(k => new FixAction(FixId,
                     "Отключить: " + (NetworkAdapterReader.LatencyHostileKeywords.TryGetValue(k, out var n) ? n : k),
-                    FixRisk.Safe, "Обратимо, значение сохраняется перед изменением."))
+                    FixRisk.Safe, "Обратимо, значение сохраняется перед изменением.",
+                    SubActionId: FixId + "." + k))
                 .ToList();
 
             // Случай «мы можем помочь»: говорим, что именно сделаем, и что остаётся человеку.

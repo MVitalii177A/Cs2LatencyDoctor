@@ -449,7 +449,14 @@ internal static class FixCommand
         Console.WriteLine();
 
         var runner = FixRunner.CreateDefault(FixSelection.Safe);
-        var report = runner.ApplyAll(diagContext, journal);
+
+        // План собирается из находок: программа применяет ровно то, на что жаловалась
+        // диагностика, а не весь набор исправлений целиком.
+        var fixPlan = FixPlan.FromFindings(diagnostic.Results);
+        if (!fixPlan.IsEmpty)
+            Console.WriteLine($"  К применению: {fixPlan.Describe()}");
+
+        var report = runner.ApplyAll(diagContext, journal, fixPlan);
 
         PrintReport(report, "ИСПРАВЛЕНИЯ");
 
@@ -555,7 +562,14 @@ internal static class FixCommand
                         FixRisk.Tradeoff => "есть компромисс",
                         _ => "только вручную"
                     };
-                    Console.WriteLine($"             → {fix.Title}  ({risk})");
+
+                    // Отдельно отмечаем то, что программа сделает по кнопке, и то,
+                    // что придётся делать самому — с причиной, а не молча.
+                    var suffix = fix.CanApplyAutomatically
+                        ? string.Empty
+                        : "   ← программа не сделает: " + (fix.WhyNotAutomatic ?? "нужно действие руками");
+
+                    Console.WriteLine($"             → {fix.Title}  ({risk}){suffix}");
                 }
 
                 Console.WriteLine();
@@ -575,7 +589,22 @@ internal static class FixCommand
             Console.WriteLine();
         }
 
-        Console.WriteLine("  Применить безопасные исправления:  cs2latency --fix");
+        var applicable = FixPlan.FromFindings(report.Results);
+
+    if (applicable.IsEmpty)
+        Console.WriteLine("  Применять нечего: программа и так ничего не будет менять.");
+    else
+    {
+        Console.WriteLine("  Программа применит по кнопке или командой --fix:");
+        foreach (var action in report.Results.SelectMany(r => r.ApplicableFixes)
+                     .DistinctBy(f => f.SubActionId ?? f.Id))
+        {
+            Console.WriteLine("    · " + action.Title);
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("  Применить:  cs2latency --fix");
+    }
         Console.WriteLine();
 
         return 0;

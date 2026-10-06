@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Cs2LatencyDoctor.Core;
 using Cs2LatencyDoctor.Core.Fixes;
 using Cs2LatencyDoctor.Core.Windows;
@@ -515,6 +515,79 @@ internal static class CoreTests
                     $"QR DonationAlerts слишком мелкий: {bitmap.PixelWidth}x{bitmap.PixelHeight}");
         });
 
+        RunTest(results, "План исправлений берётся из находок, а не из всего набора", () =>
+        {
+            // Это защита от самой неприятной ошибки: программа говорит «нажмите кнопку»,
+            // а кнопка меняет совсем не то, что нашла проверка.
+            var findings = new[]
+            {
+                CheckResult.Info("test.a", "Проверка с исправлением", "нашлось",
+                    fixes: new[] { new FixAction("fix.one", "Первое", FixRisk.Safe) }),
+                CheckResult.Warn("test.b", "Проверка с ручным действием", "нашлось",
+                    fixes: new[] { new FixAction("fix.two", "Второе", FixRisk.ManualOnly, "руками") }),
+                CheckResult.Ok("test.c", "Всё хорошо", "чисто")
+            };
+
+            var plan = FixPlan.FromFindings(findings);
+
+            if (!plan.BuiltFromFindings)
+                throw new InvalidOperationException("План не помечен как собранный из находок");
+
+            if (!plan.WantsFix("fix.one"))
+                throw new InvalidOperationException("Безопасное исправление из находки не попало в план");
+
+            if (plan.WantsFix("fix.two"))
+                throw new InvalidOperationException("Ручное действие попало в план: программа обещает то, чего не делает");
+
+            if (plan.WantsFix("fix.three"))
+                throw new InvalidOperationException("Исправление, которого нет в находках, попало в план");
+        });
+
+        RunTest(results, "Пустой план не означает «применяй всё»", () =>
+        {
+            // Проверка нашла проблемы, но исправлять нечего. Если план в этом случае
+            // считает себя пустым «по умолчанию», кнопка начнёт менять всё подряд.
+            var findings = new[]
+            {
+                CheckResult.Warn("test.x", "Проблема без исправления", "нашлось")
+            };
+
+            var plan = FixPlan.FromFindings(findings);
+
+            if (plan.IsEmpty != true)
+                throw new InvalidOperationException("План с пустыми находками должен быть пустым");
+
+            if (plan.WantsFix("net.adapter.hostile-settings"))
+                throw new InvalidOperationException(
+                    "План без находок разрешил менять сетевой адаптер — это и есть та ошибка, " +
+                    "из-за которой кнопка применяла всё подряд");
+
+            // А вот когда диагностика не запускалась, применять всё можно — и это явно.
+            if (!FixPlan.Everything.WantsFix("net.adapter.hostile-settings"))
+                throw new InvalidOperationException("Режим «применить всё» перестал работать");
+        });
+
+        RunTest(results, "Подпункт плана включает только нужный параметр", () =>
+        {
+            // Одно исправление закрывает несколько параметров. Проверка может жаловаться
+            // на один — менять остальные нельзя.
+            const string fixId = "scheduler.mmcss";
+            var plan = FixPlan.For(new FixTarget(fixId, fixId + ".Priority"));
+
+            if (!plan.WantsFix(fixId))
+                throw new InvalidOperationException("Исправление не попало в план по своему подпункту");
+
+            if (!plan.WantsSubAction(fixId, fixId + ".Priority"))
+                throw new InvalidOperationException("Указанный подпункт не попал в план");
+
+            if (plan.WantsSubAction(fixId, fixId + ".Scheduling Category"))
+                throw new InvalidOperationException("В план попал лишний параметр, которого проверка не просила");
+
+            // А если исправление выбрано целиком, меняем все его параметры.
+            var whole = FixPlan.For(new FixTarget(fixId));
+            if (!whole.WantsSubAction(fixId, fixId + ".NetworkThrottlingIndex"))
+                throw new InvalidOperationException("Выбор исправления целиком не покрыл его параметры");
+        });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };
