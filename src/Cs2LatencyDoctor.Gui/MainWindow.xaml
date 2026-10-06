@@ -216,6 +216,8 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0" Style="{StaticResource Panel}" Margin="0,0,0,12">
@@ -265,7 +267,83 @@
                     </DockPanel>
                 </Border>
 
-                <Border Grid.Row="2" Style="{StaticResource Panel}">
+                <!--
+                  Что придётся сделать руками. Отдельный блок нужен потому, что программа
+                  исправляет не всё: если эти пункты не показать отдельно, человек решит,
+                  что она сделает всё сама.
+                -->
+                <Border Grid.Row="2" Style="{StaticResource Panel}" Margin="0,0,0,12"
+                        Visibility="{Binding HasManualFixes, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="СДЕЛАТЬ РУКАМИ" Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="Это программа исправить не может — и вот почему."
+                                   Foreground="{StaticResource MutedBrush}" FontSize="11"
+                                   TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                        <ItemsControl ItemsSource="{Binding ManualFixes}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#2A2440" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}" Foreground="#E6E7EB"
+                                                       FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding Finding}" Foreground="#8B8D98"
+                                                       FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                            <TextBlock Text="{Binding Reason}" Foreground="#C9CBD3"
+                                                       FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!--
+                  Что программа уже изменила. Нужно, чтобы было видно, что именно поменялось,
+                  и можно было вернуть отдельную запись, а не всё сразу.
+                -->
+                <Border Grid.Row="3" Style="{StaticResource Panel}" Margin="0,0,0,12"
+                        Visibility="{Binding HasJournal, Converter={StaticResource BoolToVisibility}}">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top">
+                            <TextBlock Text="ЧТО ИЗМЕНЕНО" Style="{StaticResource SectionTitle}"/>
+                            <TextBlock Text="Каждую запись можно вернуть отдельно."
+                                       Foreground="{StaticResource MutedBrush}" FontSize="11"
+                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        </StackPanel>
+
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="180">
+                            <ItemsControl ItemsSource="{Binding Journal}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#20222A" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                                            <DockPanel>
+                                                <Button DockPanel.Dock="Right" Content="Вернуть"
+                                                        Style="{StaticResource BaseButton}"
+                                                        Padding="10,4" FontSize="11"
+                                                        VerticalAlignment="Center" Margin="8,0,0,0"
+                                                        Tag="{Binding}" Click="OnRevertJournalClick"/>
+
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}" Foreground="#E6E7EB"
+                                                               FontSize="12" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="{Binding Change}" Foreground="#C9CBD3"
+                                                               FontSize="11" FontFamily="Consolas"
+                                                               TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                                    <TextBlock Text="{Binding When}" Foreground="#6E6E77"
+                                                               FontSize="11" Margin="0,2,0,0"/>
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+
+                <Border Grid.Row="4" Style="{StaticResource Panel}">
                     <StackPanel>
                         <TextBlock Text="ЧТО ПРОИЗОШЛО" Style="{StaticResource SectionTitle}"/>
                         <TextBlock Text="{Binding ApplyResult}" Foreground="#C9CBD3"

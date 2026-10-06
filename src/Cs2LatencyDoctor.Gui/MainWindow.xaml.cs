@@ -89,6 +89,18 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Вернуть одну запись журнала. Кнопка есть у каждой записи: раньше откат
+    /// возвращал весь журнал целиком, и отменить только часть было нельзя.
+    /// </summary>
+    private void OnRevertJournalClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button button) return;
+        if (button.Tag is not JournalRow row) return;
+
+        _viewModel.RevertJournalEntry(row);
+    }
+
+    /// <summary>
     /// Кнопка благодарности. Программа бесплатная, поэтому это не «покупка»
     /// и не напоминание при запуске — только окно с реквизитами по желанию.
     /// </summary>
