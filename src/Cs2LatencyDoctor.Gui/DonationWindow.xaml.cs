@@ -219,7 +219,10 @@ public partial class DonationWindow : Window
     {
         if (sender is not Border card) return;
 
-        AnimateCard(card, CardHoverScale, 1.0, glowRadius: 110, glowOpacity: 1.0);
+        // Размытие 60 с запасом места вокруг карточки (22 px по краям плюс
+        // свободное место в ряду) даёт законченный ореол: он успевает
+        // растаять до границы и не выглядит обрубленным.
+        AnimateCard(card, CardHoverScale, 1.0, glowRadius: 60, glowOpacity: 1.0);
     }
 
     private void OnCardMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
