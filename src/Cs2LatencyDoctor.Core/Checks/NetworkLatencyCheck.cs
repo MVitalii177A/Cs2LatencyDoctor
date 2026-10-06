@@ -170,24 +170,123 @@ public sealed class NetworkLatencyCheck : IDiagnosticCheck
         }
 
         // --------------------------------------------------------- до интернета
-        // Здесь сразу TCP: во-первых, ICMP до внешних узлов режут чаще всего,
-        // во-вторых, TCP-путь — это ровно тот путь, по которому идёт игровой трафик.
-        context.Progress($"Замеряю задержку до внешнего узла ({ExternalTarget})…");
+        // Замеряем несколько направлений, а не один адрес. Один адрес показывает качество
+        // одного конкретного маршрута: игровой сервер может быть совсем в другую сторону
+        // и работать иначе. Три независимых сети дают картину — плохо везде или в одном месте.
+        var targets = ProbeTargets.External;
+        var perTargetSeconds = Math.Max(3, context.ProbeSeconds / Math.Max(1, targets.Count));
 
-        var wanProbe = await TcpConnectProbe.RunAsync(
-            ExternalTarget, context.ProbeSeconds, 0, null, ct);
+        var probeResults = new List<(ProbeTarget Target, Windows.LatencyProbeResult Result)>();
 
-        if (wanProbe.IsInconclusive)
+        foreach (var target in targets)
         {
-            context.Progress($"TCP не прошёл, пробую ICMP до {ExternalTarget}…");
-            var viaIcmp = await LatencyProbe.RunAsync(ExternalTarget, context.ProbeSeconds, 0, null, ct);
-            if (!viaIcmp.IsInconclusive) wanProbe = viaIcmp;
+            if (ct.IsCancellationRequested) break;
+
+            context.Progress($"Замеряю {target.Title} ({target.Host})…");
+
+            // Здесь сразу TCP: ICMP до внешних узлов режут чаще всего, а TCP-путь —
+            // это ровно тот путь, по которому идёт игровой трафик.
+            var probe = await TcpConnectProbe.RunAsync(
+                target.Host, perTargetSeconds, 0, null, ct);
+
+            if (probe.IsInconclusive)
+                probe = await LatencyProbe.RunAsync(target.Host, perTargetSeconds, 0, null, ct);
+
+            probeResults.Add((target, probe));
         }
 
+        var measured = probeResults.Where(p => !p.Result.IsInconclusive).ToList();
+
+        if (measured.Count == 0)
+        {
+            // Ни один узел не ответил: говорим честно, а не выдаём это за потери.
+            var first = probeResults.FirstOrDefault();
+
+            results.Add(CheckResult.Skipped(Id + ".wan", "Задержка до интернета",
+                "Ни один из проверенных узлов не ответил",
+                NoHelpReason.BlockedBySystem,
+                "Программа не смогла измерить задержку: соединения не проходят ни по ICMP, " +
+                "ни по TCP. Это не значит, что интернета нет — чаще всего так ведёт себя " +
+                "фаервол, антивирус или провайдер, который фильтрует такие подключения. " +
+                "Что делать: 1) проверьте, открываются ли сайты в браузере; " +
+                "2) временно отключите антивирус и повторите проверку; " +
+                $"3) если браузер работает, а программа не может подключиться к {first.Target.Host}, " +
+                "дело в фильтрации, а не в сети."));
+
+            return results;
+        }
+
+        // Основной вердикт — по самому быстрому направлению: это лучший путь до сети,
+        // который у машины сейчас есть.
+        var best = measured.OrderBy(p => p.Result.MedianMs).First();
+
         results.Add(LatencyEvaluator.Evaluate(
-            LatencyEvaluator.ApplyWanThreshold(wanProbe), Id + ".wan", "до интернета",
+            LatencyEvaluator.ApplyWanThreshold(best.Result), Id + ".wan", "до интернета",
             wanWhy, wanAdvice));
 
+        // Сравнение направлений: показывает, ровно ли везде или где-то хуже.
+        results.Add(BuildComparison(measured, perTargetSeconds));
+
         return results;
+    }
+
+    /// <summary>
+    /// Сравнение направлений. Разброс между узлами в разных сетях — ориентир:
+    /// если один сильно хуже остальных, дело в конкретном маршруте, а не в канале.
+    /// </summary>
+    private static CheckResult BuildComparison(
+        List<(ProbeTarget Target, Windows.LatencyProbeResult Result)> measured, int secondsPerTarget)
+    {
+        var ordered = measured.OrderBy(p => p.Result.MedianMs).ToList();
+        var best = ordered[0];
+        var worst = ordered[^1];
+
+        var spread = Math.Round(worst.Result.MedianMs - best.Result.MedianMs, 1);
+
+        var text = string.Join(", ", ordered.Select(p => $"{p.Target.Title} {p.Result.MedianMs:0.#}"));
+        var detail = $"Медианы: {text} мс. Разброс {spread:0.#} мс";
+
+        var metrics = new Dictionary<string, double>
+        {
+            ["wan_nodes_measured"] = ordered.Count,
+            ["wan_spread_ms"] = spread,
+            ["wan_best_median_ms"] = best.Result.MedianMs,
+            ["wan_worst_median_ms"] = worst.Result.MedianMs
+        };
+
+        // Порог 30 мс: узел, который хуже лучшего на столько, почти наверняка
+        // находится в другом направлении, а не «медленнее» сам по себе.
+        const double noticeableSpreadMs = 30.0;
+
+        if (spread < noticeableSpreadMs)
+        {
+            return new CheckResult
+            {
+                Id = "net.latency.nodes",
+                Title = "Задержка до разных узлов",
+                Severity = Severity.Ok,
+                Detail = detail,
+                Why = $"Проверены три независимых направления по {secondsPerTarget} сек. " +
+                      "Ровные значения означают, что канал работает одинаково во все стороны.",
+                Metrics = metrics
+            };
+        }
+
+        return new CheckResult
+        {
+            Id = "net.latency.nodes",
+            Title = "Задержка до разных узлов",
+            Severity = Severity.Info,
+            Detail = detail,
+            Why = $"Проверены три независимых направления по {secondsPerTarget} сек. " +
+                  $"«{worst.Target.Title}» отвечает на {spread:0.#} мс медленнее, чем " +
+                  $"«{best.Target.Title}»: это разные маршруты, и один из них длиннее.",
+            Recommendation = "Ничего делать не нужно: узлы находятся в разных сетях, " +
+                             "и разница между ними — нормальное явление. Важно другое: " +
+                             "если бы плохо было во всех направлениях сразу, вопрос был бы " +
+                             "к вашему каналу. Здесь канал работает ровно, а разница " +
+                             "объясняется удалённостью узлов.",
+            Metrics = metrics
+        };
     }
 }

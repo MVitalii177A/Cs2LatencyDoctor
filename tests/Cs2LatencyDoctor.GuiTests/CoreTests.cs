@@ -1,5 +1,6 @@
-﻿using System.IO;
+using System.IO;
 using Cs2LatencyDoctor.Core;
+using Cs2LatencyDoctor.Core.Checks;
 using Cs2LatencyDoctor.Core.Fixes;
 using Cs2LatencyDoctor.Core.Windows;
 using Cs2LatencyDoctor.Gui;
@@ -636,6 +637,32 @@ internal static class CoreTests
             var whole = FixPlan.For(new FixTarget(fixId));
             if (!whole.WantsSubAction(fixId, fixId + ".NetworkThrottlingIndex"))
                 throw new InvalidOperationException("Выбор исправления целиком не покрыл его параметры");
+        });
+        RunTest(results, "Оценка потерь: пороги и честность при недоступном узле", () =>
+        {
+            // 0 потерь — чисто.
+            if (LossEvaluator.Evaluate(100, 0) != LossEvaluator.Outcome.Clean)
+                throw new InvalidOperationException("Замер без потерь не признан чистым");
+
+            // Меньше процента — единичная потеря, а не проблема.
+            if (LossEvaluator.Evaluate(200, 1) != LossEvaluator.Outcome.SingleLoss)
+                throw new InvalidOperationException("Одна потеря из 200 признана проблемой");
+
+            // Процент и больше — в игре уже чувствуется.
+            if (LossEvaluator.Evaluate(100, 1) != LossEvaluator.Outcome.Lossy)
+                throw new InvalidOperationException("Одна потеря из 100 не признана проблемой");
+
+            if (LossEvaluator.Evaluate(20, 3) != LossEvaluator.Outcome.Lossy)
+                throw new InvalidOperationException("Три потери из 20 не признаны проблемой");
+
+            // Главное: полное отсутствие ответа — это НЕ «100% потерь», а «измерить не вышло».
+            if (LossEvaluator.Evaluate(20, 20) != LossEvaluator.Outcome.Inconclusive)
+                throw new InvalidOperationException(
+                    "Недоступный узел выдан за 100% потерь — это нарушение правила проекта");
+
+            // Число попыток не должно опускаться ниже разумного минимума.
+            if (LossEvaluator.AttemptsFor(3) < LossEvaluator.MinimumAttempts)
+                throw new InvalidOperationException("На коротком замере делается слишком мало попыток");
         });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {

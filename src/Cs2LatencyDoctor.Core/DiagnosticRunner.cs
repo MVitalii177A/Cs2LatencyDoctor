@@ -47,7 +47,8 @@ public sealed class DiagnosticRunner
         var path = NetworkPathResolver.Resolve();
 
         return new DiagnosticRunner()
-            .Add(new NetworkLatencyCheck(path) { ExternalTarget = "1.1.1.1" })
+            .Add(new NetworkLatencyCheck(path))
+            .Add(new NetworkLossCheck())
             .Add(new NetworkAdapterCheck())
             .Add(new PowerCheck())
             .Add(new SchedulerCheck())
