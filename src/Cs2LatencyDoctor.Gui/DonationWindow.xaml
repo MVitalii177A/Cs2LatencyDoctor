@@ -77,9 +77,10 @@
         -->
         <StackPanel Grid.Row="0" Margin="0,0,0,16" MaxWidth="810" HorizontalAlignment="Center">
             <TextBlock Text="Поблагодарить разработчиков" Foreground="{StaticResource TextBrush}"
-                       FontSize="19" FontWeight="Bold"/>
+                       FontSize="19" FontWeight="Bold"
+                       HorizontalAlignment="Center"/>
             <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12"
-                       Margin="0,6,0,0"
+                       Margin="0,6,0,0" TextAlignment="Center"
                        Text="Программа бесплатная и с открытым кодом. Платить ничего не нужно — все проверки и исправления работают полностью. Если она вам помогла и есть желание поддержать разработку, выберите удобный вариант."/>
         </StackPanel>
 
@@ -99,7 +100,7 @@
               шириной 810. На широком окне колонка стоит по центру, а не
               разъезжается по краям.
             -->
-            <StackPanel MaxWidth="810" HorizontalAlignment="Center" Margin="0,14,0,8">
+            <StackPanel MaxWidth="810" HorizontalAlignment="Center" Margin="0,14,0,30">
                 <ItemsControl x:Name="WalletList">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -124,56 +125,63 @@
                               Подложка не масштабируется, поэтому её эффект считается по
                               фактическим границам и остаётся целым.
                             -->
-                            <Canvas Width="262" Height="400" Margin="1,6" ClipToBounds="False">
+                            <!--
+                              Ни Canvas, ни Grid здесь не задают высоту: карточка сама
+                              определяет её по содержимому. Фиксированная высота уже
+                              приводила к тому, что нижние строки обрезались.
+                            -->
+                            <Grid Width="258" Margin="1,8">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <!-- Запас снизу: при наведении карточка растёт,
+                                         и ей нужно куда расти, не упираясь в границу. -->
+                                    <RowDefinition Height="34"/>
+                                </Grid.RowDefinitions>
+
                                 <!--
-                                  Масштаб стоит на обёртке, а не на карточке. Тогда карточка
-                                  и подложка со свечением растут ВМЕСТЕ, сохраняя взаимное
-                                  расположение. Если масштабировать только карточку, она
-                                  выйдет за границы подложки, и свечение останется лишь
-                                  с одной стороны — это уже проверено замером.
+                                  Свечение живёт на ОБЁРТКЕ, внутри которой лежит карточка.
+                                  Так оно повторяет её форму без подгонки размеров: раньше
+                                  подложка была отдельным элементом, её размер считался
+                                  приблизительно, и за карточкой оставался лишний тёмный
+                                  прямоугольник.
+
+                                  Выравнивание по верху: карточка растёт вниз в запас,
+                                  зарезервированный второй строкой.
                                 -->
-                                <Grid Width="262" Height="400" ClipToBounds="False">
-                                    <Grid.RenderTransform>
-                                        <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"
-                                                        CenterX="131" CenterY="200"/>
-                                    </Grid.RenderTransform>
+                                <Border Grid.Row="0"
+                                        HorizontalAlignment="Center" VerticalAlignment="Top"
+                                        ClipToBounds="False"
+                                        MouseEnter="OnCardMouseEnter"
+                                        MouseLeave="OnCardMouseLeave">
+                                    <Border.RenderTransform>
+                                        <!--
+                                          Имя обязательно: без него WPF замораживает
+                                          трансформацию (она становится неизменяемой),
+                                          и анимация падает с ошибкой «нельзя анимировать
+                                          замороженный объект».
+                                        -->
+                                        <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"/>
+                                    </Border.RenderTransform>
+                                    <Border.Effect>
+                                        <!--
+                                          Тень без смещения и с большим размытием: она даёт
+                                          ровный ореол вокруг карточки. При малом размытии
+                                          у края читается тёмный контур, а не свечение.
+                                        -->
+                                        <DropShadowEffect x:Name="CardGlow"
+                                                          Color="#FF8A24"
+                                                          BlurRadius="0"
+                                                          ShadowDepth="0"
+                                                          Opacity="0"
+                                                          RenderingBias="Quality"
+                                                          Direction="270"/>
+                                    </Border.Effect>
 
-                                    <!--
-                                      Подложка со свечением идёт ПЕРВОЙ, то есть рисуется
-                                      ПОД карточкой, а карточка перекрывает её собой.
-                                      Карточка остаётся видимой, наружу выступает только
-                                      свечение за её краями.
-
-                                      Фон непрозрачный, в тон панели. Это обязательно:
-                                      эффект в WPF строится по нарисованному содержимому,
-                                      и у Border с прозрачным фоном рисовать нечего — тень
-                                      не появляется вовсе. Проверено дважды: при Transparent
-                                      и при альфе 1 из 255 свечение пропадало полностью.
-                                    -->
-                                    <Border x:Name="CardGlowHost"
-                                            Width="204" Height="336"
-                                            HorizontalAlignment="Center" VerticalAlignment="Top"
-                                            ClipToBounds="False"
-                                            IsHitTestVisible="False">
-                                        <Border.Background>
-                                            <SolidColorBrush Color="#1C1D23"/>
-                                        </Border.Background>
-                                        <Border.Effect>
-                                            <DropShadowEffect x:Name="CardGlow"
-                                                              Color="#FF8A24"
-                                                              BlurRadius="0"
-                                                              ShadowDepth="0"
-                                                              Opacity="0"
-                                                              Direction="270"/>
-                                        </Border.Effect>
-                                    </Border>
-
-                                    <Border Style="{StaticResource Panel}"
-                                            Width="232" Height="364"
-                                            HorizontalAlignment="Center" VerticalAlignment="Top"
-                                            ClipToBounds="False"
-                                            MouseEnter="OnCardMouseEnter"
-                                            MouseLeave="OnCardMouseLeave">
+                                    <!-- Высота не задана: карточка берёт её по содержимому. -->
+                                    <Border x:Name="CardBox"
+                                            Style="{StaticResource Panel}"
+                                            Width="232"
+                                            ClipToBounds="False">
                                         <StackPanel VerticalAlignment="Top">
                                         <!--
                                           VerticalAlignment="Top" обязателен: без него
@@ -203,7 +211,7 @@
                                             HorizontalAlignment="Center" Margin="0,8,0,0"
                                             Cursor="Hand"
                                             Visibility="{Binding HasImage, Converter={StaticResource BoolToVisibility}}">
-                                        <Image Source="{Binding QrImage}" Width="160" Height="160"
+                                        <Image Source="{Binding QrImage}" Width="156" Height="156"
                                                RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                                     </Border>
 
@@ -224,8 +232,7 @@
                                                  BorderThickness="0" Background="Transparent"
                                                  Foreground="#E6E7EB" FontSize="12"
                                                  FontFamily="Consolas" Padding="8"
-                                                 TextWrapping="Wrap" MaxHeight="72"
-                                                 VerticalScrollBarVisibility="Auto"/>
+                                                 TextWrapping="Wrap"/>
                                     </Border>
 
                                     <Button Content="Скопировать адрес" Style="{StaticResource BaseButton}"
@@ -235,8 +242,8 @@
                                             Visibility="{Binding HasAddress, Converter={StaticResource BoolToVisibility}}"/>
                                         </StackPanel>
                                     </Border>
-                                </Grid>
-                            </Canvas>
+                                </Border>
+                            </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
@@ -271,7 +278,7 @@
                         <Border x:Name="DonationAlertsQrFrame" Grid.Column="1" Background="White"
                                 CornerRadius="8" Padding="5" VerticalAlignment="Center"
                                 Visibility="Collapsed">
-                            <Image x:Name="DonationAlertsQrImage" Width="92" Height="92"
+                            <Image x:Name="DonationAlertsQrImage" Width="128" Height="128"
                                    RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                         </Border>
                     </Grid>

@@ -6,7 +6,6 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
-using System.Windows.Threading;
 
 namespace Cs2LatencyDoctor.Gui;
 
@@ -30,6 +29,10 @@ public sealed class DonationRow
 /// Окно благодарности разработчикам: кошельки с QR-кодами и ссылка на DonationAlerts.
 /// Ничего никуда не отправляет и не требует — только показывает реквизиты,
 /// если человек сам захочет поддержать.
+///
+/// Наведения и анимаций здесь нет намеренно: карточка только показывает реквизиты,
+/// а изменение размера при наведении усложняло разметку и приводило к тому,
+/// что содержимое уезжало за границы.
 /// </summary>
 public partial class DonationWindow : Window
 {
@@ -76,29 +79,6 @@ public partial class DonationWindow : Window
               "Это не мешает работе программы.";
     }
 
-    /// <summary>
-    /// Загрузить картинку QR так, чтобы файл сразу освобождался:
-    /// иначе картинку нельзя заменить, не закрыв программу.
-    /// </summary>
-    private static BitmapImage? LoadQr(string path)
-    {
-        try
-        {
-            var bitmap = new BitmapImage();
-            bitmap.BeginInit();
-            bitmap.UriSource = new Uri(path);
-            bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.EndInit();
-            bitmap.Freeze();
-
-            return bitmap;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     private static DonationRow BuildRow(DonationOption option)
     {
         BitmapImage? image = null;
@@ -128,9 +108,32 @@ public partial class DonationWindow : Window
         };
     }
 
+    /// <summary>
+    /// Загрузить картинку QR так, чтобы файл сразу освобождался:
+    /// иначе картинку нельзя заменить, не закрыв программу.
+    /// </summary>
+    private static BitmapImage? LoadQr(string path)
+    {
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.UriSource = new Uri(path);
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.EndInit();
+            bitmap.Freeze();
+
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private void OnCopyAddressClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not Button button) return;
+        if (sender is not System.Windows.Controls.Button button) return;
 
         var address = button.Tag as string;
         if (string.IsNullOrWhiteSpace(address)) return;
@@ -209,163 +212,54 @@ public partial class DonationWindow : Window
 
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
 
+    /// <summary>Во сколько раз растёт карточка при наведении.</summary>
+    private const double HoverScale = 1.07;
+
     /// <summary>
-    /// Наведение на карточку кошелька: карточка заметно растёт, её рамка
-    /// подсвечивается, а сзади загорается зелёное свечение.
+    /// Наведение на карточку: она увеличивается целиком вместе с содержимым,
+    /// а вокруг загорается тёплое свечение.
     ///
-    /// Рост сделан через RenderTransform — он не влияет на раскладку,
-    /// поэтому соседние карточки не сдвигаются.
+    /// Масштаб стоит на обёртке, внутри которой лежит и карточка, и её свечение.
+    /// Поэтому растут они вместе, а эффект считается по неизменным границам
+    /// обёртки — если масштабировать один элемент с эффектом, WPF посчитает
+    /// тень до масштаба и обрежет её.
     /// </summary>
     private void OnCardMouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (sender is not Border card) return;
+        if (sender is not Border host) return;
 
-        // Наведённая карточка поднимается на верхний слой, иначе её свечение
-        // перекрывается соседними карточками.
-        //
-        // Поднимать надо ЯЧЕЙКУ СПИСКА, а не саму карточку: соседние карточки
-        // лежат не в одной Canvas, а в разных контейнерах ItemsControl, поэтому
-        // ZIndex внутри карточки на порядок отрисовки не влияет. Проверено
-        // замером: без этого свечение справа от средней карточки не рисовалось.
-        RaiseCard(card, top: true);
-
-        // Свечение тусклее и короче: мягкая подсветка, а не яркое пятно.
-        AnimateCard(card, CardHoverScale, 1.0, glowRadius: 38, glowOpacity: 0.55);
+        // Размытие подобрано под промежуток между карточками: он всего 18 px,
+        // и более широкий ореол упирался бы в соседнюю карточку, обрываясь
+        // резкой границей. Такой ореол выглядел как тёмная рамка за карточкой.
+        AnimateCard(host, HoverScale, glowRadius: 40, glowOpacity: 1.0);
     }
 
     private void OnCardMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (sender is not Border card) return;
+        if (sender is not Border host) return;
 
-        AnimateCard(card, 1.0, 0.0, glowRadius: 0, glowOpacity: 0);
-
-        // Опускаем ячейку обратно только после того, как свечение погаснет:
-        // иначе на середине затухания ореол резко уйдёт под соседнюю карточку.
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(160) };
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            RaiseCard(card, top: false);
-        };
-        timer.Start();
+        AnimateCard(host, 1.0, glowRadius: 0, glowOpacity: 0);
     }
 
-    /// <summary>
-    /// Поднять или опустить ячейку списка, в которой лежит карточка.
-    ///
-    /// Подниматься надо именно до ячейки, созданной ItemsControl: соседние
-    /// карточки лежат в разных контейнерах, поэтому ZIndex внутри карточки
-    /// на порядок отрисовки не влияет.
-    ///
-    /// Начинаем с родителя карточки. Если начать с самой карточки, первым
-    /// найдётся её собственный ContentPresenter — тот, что показывает внутри
-    /// неё StackPanel, — и ZIndex уйдёт не туда. Проверено замером: из-за
-    /// этого свечение продолжало уходить под соседнюю карточку.
-    /// </summary>
-    private static void RaiseCard(Border card, bool top)
+    private static void AnimateCard(Border host, double scale, double glowRadius, double glowOpacity)
     {
-        try
-        {
-            System.Windows.DependencyObject? node = VisualTreeHelper.GetParent(card);
-
-            // Ищем ячейку, которая лежит внутри панели списка.
-            while (node is not null)
-            {
-                if (node is ContentPresenter presenter &&
-                    VisualTreeHelper.GetParent(presenter) is Panel)
-                {
-                    Panel.SetZIndex(presenter, top ? 100 : 1);
-                    return;
-                }
-
-                node = VisualTreeHelper.GetParent(node);
-            }
-        }
-        catch
-        {
-            // Если дерево ещё не построено — не критично, порядок останется прежним.
-        }
-    }
-
-    /// <summary>Во сколько раз растёт карточка при наведении.</summary>
-    private const double CardHoverScale = 1.10;
-
-    private static void AnimateCard(Border card, double scale, double borderOpacity,
-        double glowRadius, double glowOpacity)
-    {
-        var duration = TimeSpan.FromMilliseconds(130);
+        var duration = TimeSpan.FromMilliseconds(150);
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
 
-        // --- рост карточки ---
-        // Масштабируется обёртка, в которой лежат и карточка, и подложка со
-        // свечением. Поэтому они растут вместе и взаимное расположение
-        // сохраняется: масштабировать одну карточку нельзя, она выйдет за
-        // границы подложки и свечение останется лишь с одной стороны.
-        //
-        // Место под увеличенный размер отведено заранее (ячейка Canvas),
-        // поэтому соседние карточки не сдвигаются.
-        if (FindScaledHost(card) is { } host)
+        if (host.RenderTransform is ScaleTransform transform)
         {
-            host.BeginAnimation(ScaleTransform.ScaleXProperty,
+            transform.BeginAnimation(ScaleTransform.ScaleXProperty,
                 new DoubleAnimation(scale, duration) { EasingFunction = easing });
-            host.BeginAnimation(ScaleTransform.ScaleYProperty,
+            transform.BeginAnimation(ScaleTransform.ScaleYProperty,
                 new DoubleAnimation(scale, duration) { EasingFunction = easing });
         }
 
-        // --- подсветка рамки ---
-        if (card.BorderBrush is SolidColorBrush)
+        if (host.Effect is DropShadowEffect glow)
         {
-            // Тёплый оранжевый — в тон свечению.
-            var colour = new ColorAnimation(
-                borderOpacity > 0 ? Color.FromRgb(0xFF, 0x8A, 0x24) : Colors.Transparent, duration)
-            {
-                EasingFunction = easing
-            };
-
-            card.BorderBrush = new SolidColorBrush(Colors.Transparent);
-            card.BorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, colour);
+            glow.BeginAnimation(DropShadowEffect.BlurRadiusProperty,
+                new DoubleAnimation(glowRadius, duration) { EasingFunction = easing });
+            glow.BeginAnimation(DropShadowEffect.OpacityProperty,
+                new DoubleAnimation(glowOpacity, duration) { EasingFunction = easing });
         }
-
-        // --- свечение сзади ---
-        // Свечение живёт на отдельной подложке под карточкой, которая не
-        // масштабируется. Иначе WPF посчитал бы эффект до масштаба и обрезал
-        // ореол по исходному размеру карточки.
-        AnimateGlow(FindGlowHost(card), glowRadius, glowOpacity, duration, easing);
-    }
-
-    /// <summary>
-    /// Найти масштаб обёртки, в которой лежат карточка и подложка со свечением.
-    /// </summary>
-    private static ScaleTransform? FindScaledHost(Border card)
-    {
-        if (VisualTreeHelper.GetParent(card) is not FrameworkElement wrapper) return null;
-
-        return wrapper.RenderTransform as ScaleTransform;
-    }
-
-    /// <summary>Найти подложку со свечением: она лежит рядом с карточкой в обёртке.</summary>
-    private static DropShadowEffect? FindGlowHost(Border card)
-    {
-        if (VisualTreeHelper.GetParent(card) is not Panel wrapper) return null;
-
-        foreach (var child in wrapper.Children)
-        {
-            if (child is Border { Name: "CardGlowHost" } host)
-                return host.Effect as DropShadowEffect;
-        }
-
-        return null;
-    }
-
-    /// <summary>Плавно перевести слой свечения в заданное состояние.</summary>
-    private static void AnimateGlow(DropShadowEffect? glow, double radius, double opacity,
-        TimeSpan duration, IEasingFunction easing)
-    {
-        if (glow is null) return;
-
-        glow.BeginAnimation(DropShadowEffect.BlurRadiusProperty,
-            new DoubleAnimation(radius, duration) { EasingFunction = easing });
-        glow.BeginAnimation(DropShadowEffect.OpacityProperty,
-            new DoubleAnimation(opacity, duration) { EasingFunction = easing });
     }
 }

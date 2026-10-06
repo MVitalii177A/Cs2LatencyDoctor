@@ -9,6 +9,8 @@
     <UseWPF>true</UseWPF>
     <LangVersion>latest</LangVersion>
     <AssemblyName>Cs2LatencyDoctor.Gui</AssemblyName>
+    <!-- Иконка приложения: попадает и в exe, и в ярлык, и в панель задач. -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <RootNamespace>Cs2LatencyDoctor.Gui</RootNamespace>
   </PropertyGroup>
 
