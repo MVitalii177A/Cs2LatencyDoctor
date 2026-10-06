@@ -139,6 +139,7 @@ if (!jsonMode)
 {
     Console.WriteLine();
     Console.WriteLine("  Cs2LatencyDoctor — что мешает играть в CS2");
+        Console.WriteLine("  " + AppVersion.Display);
     Console.WriteLine("  " + new string('─', 66));
     Console.WriteLine($"  Права администратора: {(isAdmin ? "есть" : "нет (часть проверок будет пропущена)")}");
     Console.WriteLine($"  Замер сети: {probeSeconds} сек на каждый узел");

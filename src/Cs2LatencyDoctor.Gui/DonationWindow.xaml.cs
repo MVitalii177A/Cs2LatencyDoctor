@@ -39,6 +39,7 @@ public partial class DonationWindow : Window
     public DonationWindow()
     {
         InitializeComponent();
+        VersionText.Text = Cs2LatencyDoctor.Core.AppVersion.Display;
         FillContent();
     }
 

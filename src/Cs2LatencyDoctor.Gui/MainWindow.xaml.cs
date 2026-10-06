@@ -12,6 +12,11 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        // Версия в шапке: по ней видно, какая сборка у человека, —
+        // это первое, о чём спрашивают при разборе проблемы.
+        VersionText.Text = Core.AppVersion.Display;
+
         DataContext = _viewModel;
     }
 
