@@ -53,11 +53,46 @@ public partial class DonationWindow : Window
                 "здесь будет кнопка, открывающая страницу в браузере.";
         }
 
+        // QR-код страницы: рядом с кнопкой, чтобы можно было навести телефон
+        if (DonationInfo.DonationAlertsQrExists)
+        {
+            var image = LoadQr(DonationInfo.DonationAlertsQrPath);
+
+            if (image is not null)
+            {
+                DonationAlertsQrImage.Source = image;
+                DonationAlertsQrFrame.Visibility = Visibility.Visible;
+            }
+        }
+
         // ------------------------------------------------------------ статус
         StatusText.Text = DonationInfo.IsConfigured
             ? "Спасибо, что пользуетесь программой. Поддержка не обязательна."
             : "Реквизиты ещё не заполнены разработчиком — поддержать пока нельзя. " +
               "Это не мешает работе программы.";
+    }
+
+    /// <summary>
+    /// Загрузить картинку QR так, чтобы файл сразу освобождался:
+    /// иначе картинку нельзя заменить, не закрыв программу.
+    /// </summary>
+    private static BitmapImage? LoadQr(string path)
+    {
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.UriSource = new Uri(path);
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.EndInit();
+            bitmap.Freeze();
+
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static DonationRow BuildRow(DonationOption option)
@@ -67,25 +102,10 @@ public partial class DonationWindow : Window
 
         if (option.QrExists)
         {
-            try
-            {
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.UriSource = new Uri(option.QrFullPath);
+            image = LoadQr(option.QrFullPath);
 
-                // OnLoad освобождает файл сразу: картинку можно заменить,
-                // не закрывая программу.
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.EndInit();
-                bitmap.Freeze();
-
-                image = bitmap;
-            }
-            catch (Exception ex)
-            {
-                problem = $"Картинку QR не удалось открыть ({ex.Message}). " +
-                          $"Файл: Assets\\{option.QrFileName}";
-            }
+            if (image is null)
+                problem = $"Картинку QR не удалось открыть. Файл: Assets\\{option.QrFileName}";
         }
         else
         {

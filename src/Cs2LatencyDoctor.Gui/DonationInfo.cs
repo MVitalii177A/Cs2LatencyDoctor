@@ -47,7 +47,16 @@ public sealed class DonationOption
 public static class DonationInfo
 {
     /// <summary>Ссылка на страницу DonationAlerts. Пусто — кнопка будет неактивна.</summary>
-    public const string DonationAlertsUrl = "";
+    public const string DonationAlertsUrl = "https://www.donationalerts.com/r/shifukrd";
+
+    /// <summary>Картинка с QR-кодом страницы DonationAlerts.</summary>
+    public const string DonationAlertsQrFileName = "donationalerts.png";
+
+    /// <summary>Полный путь к картинке QR для DonationAlerts.</summary>
+    public static string DonationAlertsQrPath =>
+        Path.Combine(AppContext.BaseDirectory, "Assets", DonationAlertsQrFileName);
+
+    public static bool DonationAlertsQrExists => File.Exists(DonationAlertsQrPath);
 
     /// <summary>Варианты поддержки. Добавляйте сколько нужно.</summary>
     public static readonly IReadOnlyList<DonationOption> Options = new[]

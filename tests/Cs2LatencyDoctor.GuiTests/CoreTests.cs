@@ -476,6 +476,45 @@ internal static class CoreTests
             }
         });
 
+        RunTest(results, "Ссылка DonationAlerts указана верно и её QR на месте", () =>
+        {
+            // Битая ссылка означает, что человек нажмёт кнопку и попадёт в никуда.
+            var url = DonationInfo.DonationAlertsUrl;
+
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                // Пустая ссылка — допустимо: кнопка просто неактивна.
+                return;
+            }
+
+            if (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    $"Ссылка DonationAlerts должна начинаться с https:// — сейчас: {url}");
+
+            if (!url.Contains("donationalerts.com", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    $"Ссылка DonationAlerts ведёт не на donationalerts.com: {url}");
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out _))
+                throw new InvalidOperationException(
+                    $"Ссылка DonationAlerts не разбирается как адрес: {url}");
+
+            if (!DonationInfo.DonationAlertsQrExists)
+                throw new InvalidOperationException(
+                    $"Ссылка указана, но картинки QR нет: ожидается " +
+                    $"{DonationInfo.DonationAlertsQrPath}");
+
+            var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+            bitmap.BeginInit();
+            bitmap.UriSource = new Uri(DonationInfo.DonationAlertsQrPath);
+            bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bitmap.EndInit();
+
+            if (bitmap.PixelWidth < 150 || bitmap.PixelHeight < 150)
+                throw new InvalidOperationException(
+                    $"QR DonationAlerts слишком мелкий: {bitmap.PixelWidth}x{bitmap.PixelHeight}");
+        });
+
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };

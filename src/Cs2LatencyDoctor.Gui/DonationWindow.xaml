@@ -150,15 +150,22 @@
                             <TextBlock Text="DonationAlerts — картой или из кошелька"
                                        Style="{StaticResource SectionTitle}"/>
                             <TextBlock TextWrapping="Wrap" Foreground="#C9CBD3" FontSize="12"
-                                       Text="Откроется страница в браузере: поддержать можно разово или подпиской."/>
+                                       Text="Наведите телефон на код или нажмите кнопку. Откроется страница в браузере: поддержать можно разово или подпиской."/>
                             <TextBlock x:Name="DonationAlertsMissingText" Foreground="#F5A524"
                                        FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
                                        Visibility="Collapsed"/>
+                            <Button x:Name="DonationAlertsButton" Content="Открыть DonationAlerts"
+                                    Style="{StaticResource BaseButton}" Margin="0,12,0,0"
+                                    HorizontalAlignment="Left" MinWidth="200"
+                                    Click="OnDonationAlertsClick"/>
                         </StackPanel>
 
-                        <Button x:Name="DonationAlertsButton" Grid.Column="1" Content="Открыть DonationAlerts"
-                                Style="{StaticResource BaseButton}" VerticalAlignment="Center"
-                                MinWidth="200" Click="OnDonationAlertsClick"/>
+                        <Border x:Name="DonationAlertsQrFrame" Grid.Column="1" Background="White"
+                                CornerRadius="8" Padding="5" VerticalAlignment="Center"
+                                Visibility="Collapsed">
+                            <Image x:Name="DonationAlertsQrImage" Width="104" Height="104"
+                                   RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                        </Border>
                     </Grid>
                 </Border>
 
