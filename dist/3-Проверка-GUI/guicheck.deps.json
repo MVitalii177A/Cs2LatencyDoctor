@@ -8,7 +8,7 @@
     ".NETCoreApp,Version=v10.0": {
       "guicheck/1.0.0": {
         "dependencies": {
-          "Cs2LatencyDoctor.Gui": "1.0.0"
+          "Cs2LatencyDoctor.Gui": "1.1.0"
         },
         "runtime": {
           "guicheck.dll": {}
@@ -30,25 +30,25 @@
           }
         }
       },
-      "Cs2LatencyDoctor.Core/1.0.0": {
+      "Cs2LatencyDoctor.Core/1.1.0": {
         "dependencies": {
           "System.Management": "10.0.12"
         },
         "runtime": {
           "Cs2LatencyDoctor.Core.dll": {
-            "assemblyVersion": "1.0.0.0",
-            "fileVersion": "1.0.0.0"
+            "assemblyVersion": "1.1.0.0",
+            "fileVersion": "1.1.0.0"
           }
         }
       },
-      "Cs2LatencyDoctor.Gui/1.0.0": {
+      "Cs2LatencyDoctor.Gui/1.1.0": {
         "dependencies": {
-          "Cs2LatencyDoctor.Core": "1.0.0"
+          "Cs2LatencyDoctor.Core": "1.1.0"
         },
         "runtime": {
           "Cs2LatencyDoctor.Gui.dll": {
-            "assemblyVersion": "1.0.0.0",
-            "fileVersion": "1.0.0.0"
+            "assemblyVersion": "1.1.0.0",
+            "fileVersion": "1.1.0.0"
           }
         }
       }
@@ -67,12 +67,12 @@
       "path": "system.management/10.0.12",
       "hashPath": "system.management.10.0.12.nupkg.sha512"
     },
-    "Cs2LatencyDoctor.Core/1.0.0": {
+    "Cs2LatencyDoctor.Core/1.1.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
     },
-    "Cs2LatencyDoctor.Gui/1.0.0": {
+    "Cs2LatencyDoctor.Gui/1.1.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
