@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Cs2LatencyDoctor.Core;
 using Cs2LatencyDoctor.Core.Checks;
 using Cs2LatencyDoctor.Core.Fixes;
@@ -663,6 +663,58 @@ internal static class CoreTests
             // Число попыток не должно опускаться ниже разумного минимума.
             if (LossEvaluator.AttemptsFor(3) < LossEvaluator.MinimumAttempts)
                 throw new InvalidOperationException("На коротком замере делается слишком мало попыток");
+        });
+        RunTest(results, "Определение двухканального режима памяти", () =>
+        {
+            // Режим памяти определяется по расположению планок. Ошибка здесь означает
+            // ложный совет «переставьте планки» — то есть человек полезет в корпус зря.
+            var dualController = MemoryCheck.DescribeChannel("Controller0-DIMMA2");
+            var dualController2 = MemoryCheck.DescribeChannel("Controller1-DIMMB2");
+
+            if (dualController == dualController2)
+                throw new InvalidOperationException(
+                    "Планки в разных контроллерах считаются одним каналом — это ложное предупреждение");
+
+            var sameController = MemoryCheck.DescribeChannel("Controller0-DIMMA1");
+            var sameController2 = MemoryCheck.DescribeChannel("Controller0-DIMMB1");
+
+            if (sameController != sameController2)
+                throw new InvalidOperationException(
+                    "Планки в одном контроллере считаются разными каналами — это пропуск проблемы");
+
+            // Буквенный формат слотов (платы без Controller в имени).
+            var byLetter = MemoryCheck.DescribeChannel("DIMMA1");
+            var byLetter2 = MemoryCheck.DescribeChannel("DIMMB1");
+
+            if (byLetter is null || byLetter2 is null || byLetter == byLetter2)
+                throw new InvalidOperationException("Буквенный формат слотов не разобран");
+
+            // Непонятный формат: честно null, а не выдуманный канал.
+            if (MemoryCheck.DescribeChannel("Bank 0") is not null)
+                throw new InvalidOperationException("Для непонятного слота выдуман канал");
+        });
+
+        RunTest(results, "Событие о перегреве ищется с фильтром по источнику", () =>
+        {
+            // Это защита от реальной ошибки: сначала проверка брала события только
+            // по коду 37 и находила записи службы точного времени, после чего
+            // выдавала ложное предупреждение о перегреве процессора.
+            var query = ThermalCheck.BuildEventQuery("Microsoft-Windows-Kernel-Processor-Power", 37);
+
+            if (!query.Contains("SourceName=", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Запрос не фильтрует по источнику: в него попадут чужие события");
+
+            if (!query.Contains("EventCode=37", StringComparison.Ordinal))
+                throw new InvalidOperationException("Запрос не фильтрует по коду события");
+
+            // Событие 55 — обычная информация о питании, она пишется постоянно.
+            if (ThermalCheck.ThrottleEventCodes.Contains(55))
+                throw new InvalidOperationException(
+                    "Информационное событие 55 попало в признаки перегрева — это ложные срабатывания");
+
+            if (ThermalCheck.ThrottleEventCodes.Count == 0 || ThermalCheck.ThrottleEventSources.Count == 0)
+                throw new InvalidOperationException("Список признаков перегрева пуст");
         });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
