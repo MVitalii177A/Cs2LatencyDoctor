@@ -1,7 +1,7 @@
 name: Чего-то не хватает
 description: Предложение добавить проверку, исправление или изменить поведение
 title: "[Предложение] "
-labels: ["улучшение"]
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:

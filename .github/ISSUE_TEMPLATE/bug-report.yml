@@ -1,7 +1,7 @@
 name: Что-то не работает
 description: Программа нашла не то, не запускается или выдала ошибку
 title: "[Ошибка] "
-labels: ["ошибка"]
+labels: ["bug"]
 body:
   - type: markdown
     attributes:
