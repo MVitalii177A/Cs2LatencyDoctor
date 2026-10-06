@@ -2,6 +2,7 @@
 using Cs2LatencyDoctor.Core;
 using Cs2LatencyDoctor.Core.Checks;
 using Cs2LatencyDoctor.Core.Fixes;
+using Cs2LatencyDoctor.Core.Report;
 using Cs2LatencyDoctor.Core.Windows;
 using Cs2LatencyDoctor.Gui;
 using Microsoft.Win32;
@@ -715,6 +716,111 @@ internal static class CoreTests
 
             if (ThermalCheck.ThrottleEventCodes.Count == 0 || ThermalCheck.ThrottleEventSources.Count == 0)
                 throw new InvalidOperationException("Список признаков перегрева пуст");
+        });
+        RunTest(results, "Список оверлеев не пуст и не путает программы", () =>
+        {
+            // Ошибка в этом списке стоит дорого: за оверлей на FACEIT и ESEA
+            // блокируют аккаунт, поэтому ложное предупреждение здесь недопустимо.
+            var known = OverlayCheck.KnownOverlays;
+
+            if (known.Length < 8)
+                throw new InvalidOperationException($"В списке оверлеев всего {known.Length} записей");
+
+            foreach (var app in known)
+            {
+                if (app.ProcessNames.Length == 0)
+                    throw new InvalidOperationException($"У «{app.Title}» не указано ни одного процесса");
+
+                if (string.IsNullOrWhiteSpace(app.Note))
+                    throw new InvalidOperationException($"У «{app.Title}» нет объяснения, чем он мешает");
+            }
+
+            // Одна и та же программа не должна встречаться дважды: иначе в отчёте
+            // будет две записи об одном и том же.
+            var duplicates = known.GroupBy(a => a.Title).Where(g => g.Count() > 1).ToList();
+
+            if (duplicates.Count > 0)
+                throw new InvalidOperationException(
+                    "Программа повторяется в списке: " + string.Join(", ", duplicates.Select(d => d.Key)));
+
+            // Программы, за которые блокируют на площадках, должны быть помечены явно.
+            var discord = known.FirstOrDefault(a => a.Title == "Discord");
+            if (discord is null || !discord.BannedOnPlatforms)
+                throw new InvalidOperationException("Discord не помечен как запрещённый на площадках");
+
+            var obs = known.FirstOrDefault(a => a.Title == "OBS Studio");
+            if (obs is null || obs.BannedOnPlatforms)
+                throw new InvalidOperationException(
+                    "OBS помечен как запрещённый: это ложное предупреждение о блокировке");
+        });
+        RunTest(results, "Отчёт сохраняется и содержит то, что нужно для разговора", () =>
+        {
+            // Отчёт несут провайдеру или выкладывают на форум, поэтому в нём должны
+            // быть версия, дата и отдельный список ручных действий. Без версии
+            // непонятно, какая сборка это выдала; без списка — что осталось сделать.
+            var report = new DiagnosticReport
+            {
+                Duration = TimeSpan.FromSeconds(12.3),
+                Results = new[]
+                {
+                    CheckResult.Warn("test.problem", "Проверочная проблема", "нашлось что-то",
+                        "потому что так работает",
+                        new[]
+                        {
+                            new FixAction("test.manual", "Сделать руками", FixRisk.ManualOnly,
+                                "Требуется физическое действие."),
+                            new FixAction("test.auto", "Сделать самим", FixRisk.Safe)
+                        },
+                        "Что делать: возьмите и сделайте."),
+                    CheckResult.Ok("test.ok", "Проверочная норма", "всё чисто")
+                }
+            };
+
+            // Каталог Temp в этой среде закрыт политикой, поэтому пишем рядом с тестами.
+            var directory = Path.Combine(Directory.GetCurrentDirectory(),
+                "test-report-" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(directory);
+
+            try
+            {
+                var textPath = Path.Combine(directory, "report.txt");
+                var jsonPath = Path.Combine(directory, "report.json");
+
+                var text = ReportExporter.SaveText(report, textPath);
+                var json = ReportExporter.SaveJson(report, jsonPath);
+
+                if (text.SizeBytes <= 0 || json.SizeBytes <= 0)
+                    throw new InvalidOperationException("Отчёт сохранился пустым");
+
+                var textContent = File.ReadAllText(textPath);
+
+                foreach (var expected in new[]
+                         {
+                             AppVersion.Short, "ПРОВЕРКА КОМПЬЮТЕРА", "Проверочная проблема",
+                             "СДЕЛАТЬ РУКАМИ", "Сделать руками", "Что делать: возьмите и сделайте."
+                         })
+                {
+                    if (!textContent.Contains(expected, StringComparison.Ordinal))
+                        throw new InvalidOperationException($"В текстовом отчёте нет «{expected}»");
+                }
+
+                // Программа не должна обещать в отчёте то, чего не сделает.
+                if (!textContent.Contains("руками", StringComparison.Ordinal))
+                    throw new InvalidOperationException("В отчёте не отмечено, что делается руками");
+
+                var jsonContent = File.ReadAllText(jsonPath);
+
+                if (!jsonContent.Contains("test.problem", StringComparison.Ordinal))
+                    throw new InvalidOperationException("В JSON-отчёте нет находки");
+
+                if (!jsonContent.Contains("canApplyAutomatically", StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "В JSON-отчёте нет признака, применимо ли исправление автоматически");
+            }
+            finally
+            {
+                try { Directory.Delete(directory, recursive: true); } catch { /* не критично */ }
+            }
         });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {

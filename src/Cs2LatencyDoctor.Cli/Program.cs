@@ -5,6 +5,7 @@ using Cs2LatencyDoctor.Core.Background;
 using Cs2LatencyDoctor.Core.Checks;
 using Cs2LatencyDoctor.Core.Fixes;
 using Cs2LatencyDoctor.Core.History;
+using Cs2LatencyDoctor.Core.Report;
 
 // Регистрируем старые кодировки: нужны для чтения вывода ping.exe и powercfg.
 AppBootstrap.Initialize();
@@ -37,6 +38,7 @@ var doResume = false;
 var assumeYes = false;
 var showJournal = false;
 var revertOneNumber = 0;
+string? exportPath = null;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -63,6 +65,10 @@ for (var i = 0; i < args.Length; i++)
             break;
         case "--journal":
             showJournal = true;
+            break;
+        case "--export" when i + 1 < args.Length:
+            exportPath = args[i + 1];
+            i++;
             break;
         case "--revert-one":
             // Откат одной записи: номер берём из --journal.
@@ -130,6 +136,7 @@ if (showHelp)
           cs2latency --plan                      что можно исправить (ничего не меняет)
           cs2latency --fix                       применить безопасные исправления
           cs2latency --revert                    вернуть всё как было
+        cs2latency --export FILE               сохранить отчёт в файл (.txt или .json)
         cs2latency --journal                   что именно было изменено
         cs2latency --revert-one N              вернуть одну запись из журнала
           cs2latency --history                   история замеров и что изменилось
@@ -183,6 +190,34 @@ if (!jsonMode) Console.Write("\r" + new string(' ', 66) + "\r");
 // помогли ли правки. История не покидает компьютер.
 var historyStore = new HistoryStore();
 var historyBefore = report.CaptureAndSummarize(historyStore);
+
+// ------------------------------------------------------------------- экспорт
+// Отчёт сохраняется по явной команде и остаётся файлом на диске: программа
+// ничего никуда не отправляет — это её основное обещание.
+if (exportPath is not null)
+{
+    try
+    {
+        var fullPath = Path.GetFullPath(exportPath);
+        var isJson = fullPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
+
+        var exported = isJson
+            ? ReportExporter.SaveJson(report, fullPath, historyBefore)
+            : ReportExporter.SaveText(report, fullPath, historyBefore);
+
+        if (!jsonMode)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"  Отчёт сохранён ({exported.Format}, {exported.SizeText}):");
+            Console.WriteLine("  " + exported.FilePath);
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine("  Не удалось сохранить отчёт: " + ex.Message);
+        return 4;
+    }
+}
 
 // ------------------------------------------------------------------- вывод
 if (jsonMode)

@@ -1,4 +1,5 @@
 using System.Windows;
+using Cs2LatencyDoctor.Core.Report;
 
 namespace Cs2LatencyDoctor.Gui;
 
@@ -98,6 +99,28 @@ public partial class MainWindow : Window
         if (button.Tag is not JournalRow row) return;
 
         _viewModel.RevertJournalEntry(row);
+    }
+
+    /// <summary>
+    /// Сохранить отчёт в файл. Человек выбирает место сам; по расширению понятно,
+    /// в каком виде сохранять — текст для чтения или JSON для обработки.
+    /// </summary>
+    private void OnExportClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Сохранить отчёт о проверке",
+            FileName = ReportExporter.SuggestFileName(DateTimeOffset.Now, "txt"),
+            DefaultExt = ".txt",
+            Filter = "Текстовый отчёт (*.txt)|*.txt|Данные в формате JSON (*.json)|*.json",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            AddExtension = true
+        };
+
+        if (dialog.ShowDialog(this) != true) return;
+
+        var asJson = dialog.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
+        _viewModel.ExportReport(dialog.FileName, asJson);
     }
 
     /// <summary>

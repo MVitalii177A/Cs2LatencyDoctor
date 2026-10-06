@@ -25,8 +25,24 @@ public sealed class DiagnosticReport
 
             if (problems > 0) return $"Найдено проблем: {problems}, предупреждений: {warnings}";
             if (warnings > 0) return $"Предупреждений: {warnings}, в порядке: {ok}";
-            return $"Всё в порядке ({ok} проверок)";
+            return $"Всё в порядке ({ok} {Plural(ok, "проверка", "проверки", "проверок")})";
         }
+    }
+
+    /// <summary>
+    /// Правильная форма слова после числа. Без этого в отчёте появляется
+    /// «21 проверок» — мелочь, но отчёт читают люди, и он должен быть грамотным.
+    /// </summary>
+    private static string Plural(int count, string one, string few, string many)
+    {
+        var lastTwo = count % 100;
+        var last = count % 10;
+
+        if (lastTwo is >= 11 and <= 14) return many;
+        if (last == 1) return one;
+        if (last is >= 2 and <= 4) return few;
+
+        return many;
     }
 }
 
@@ -52,6 +68,7 @@ public sealed class DiagnosticRunner
             .Add(new DiskCheck())
             .Add(new MemoryCheck())
             .Add(new ThermalCheck())
+            .Add(new OverlayCheck())
             .Add(new NetworkAdapterCheck())
             .Add(new PowerCheck())
             .Add(new SchedulerCheck())

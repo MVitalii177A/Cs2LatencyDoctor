@@ -131,6 +131,9 @@
                     Margin="8,0,0,0" Click="OnApplyClick" IsEnabled="{Binding IsIdle}"/>
             <Button Content="Откатить изменения" Style="{StaticResource BaseButton}"
                     Margin="8,0,0,0" Click="OnRevertClick" IsEnabled="{Binding IsIdle}"/>
+            <Button Content="Сохранить отчёт" Style="{StaticResource BaseButton}"
+                    Margin="8,0,0,0" Click="OnExportClick" IsEnabled="{Binding IsIdle}"
+                    ToolTip="Сохранить результат проверки в файл: его можно показать провайдеру или выложить на форум."/>
             <Button Content="Перезапустить от администратора" Style="{StaticResource BaseButton}"
                     Margin="8,0,0,0" Click="OnElevateClick"/>
             <Button Content="♥ Поблагодарить" Style="{StaticResource DonateButton}"

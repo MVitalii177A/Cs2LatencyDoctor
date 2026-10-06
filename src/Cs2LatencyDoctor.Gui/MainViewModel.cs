@@ -7,6 +7,7 @@ using Cs2LatencyDoctor.Core;
 using Cs2LatencyDoctor.Core.Background;
 using Cs2LatencyDoctor.Core.Fixes;
 using Cs2LatencyDoctor.Core.History;
+using Cs2LatencyDoctor.Core.Report;
 
 namespace Cs2LatencyDoctor.Gui;
 
@@ -303,6 +304,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             // Запоминаем сами находки, а не только строки для показа: по ним
             // собирается план исправлений, чтобы применять ровно найденное.
             _lastFindings = report.Results;
+            _lastReport = report;
+            _lastHistory = historyBefore;
 
             // Отдельно собираем то, что придётся делать руками. Без этого списка
             // человек видит «программа исправит не всё» и не понимает, что осталось.
@@ -369,6 +372,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// <summary>Находки последней проверки: по ним собирается план исправлений.</summary>
     private IReadOnlyList<CheckResult> _lastFindings = Array.Empty<CheckResult>();
 
+    /// <summary>Отчёт последней проверки: из него собирается файл для отправки.</summary>
+    private DiagnosticReport? _lastReport;
+
+    /// <summary>История на момент проверки: попадает в отчёт, чтобы было видно динамику.</summary>
+    private HistorySummary? _lastHistory;
+
     /// <summary>
     /// Что именно применять. Если проверка ещё не выполнялась, план пуст и программа
     /// применит всё, что умеет: так честнее, чем молча ничего не сделать.
@@ -376,6 +385,38 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private FixPlan BuildPlan() =>
         _lastFindings.Count == 0 ? FixPlan.Everything : FixPlan.FromFindings(_lastFindings);
 
+    /// <summary>
+    /// Сохранить отчёт в файл. Нужно, чтобы результат можно было показать:
+    /// в поддержку провайдера, на форум, в чат. Файл остаётся у человека,
+    /// никуда не отправляется.
+    /// </summary>
+    public void ExportReport(string path, bool asJson)
+    {
+        if (_lastReport is null)
+        {
+            ApplyResult = "Сначала выполните проверку: сохранять пока нечего.";
+            OnPropertyChanged(nameof(ApplyResult));
+            return;
+        }
+
+        try
+        {
+            var exported = asJson
+                ? ReportExporter.SaveJson(_lastReport, path, _lastHistory)
+                : ReportExporter.SaveText(_lastReport, path, _lastHistory);
+
+            ApplyResult = $"Отчёт сохранён ({exported.Format}, {exported.SizeText}):" +
+                          Environment.NewLine + exported.FilePath;
+            Status = "Отчёт сохранён";
+        }
+        catch (Exception ex)
+        {
+            ApplyResult = "Не удалось сохранить отчёт: " + ex.Message;
+            Status = "Ошибка сохранения";
+        }
+
+        OnPropertyChanged(nameof(ApplyResult));
+    }
     /// <summary>Собрать строки журнала для показа в окне.</summary>
     private static List<JournalRow> BuildJournalRows()
     {
