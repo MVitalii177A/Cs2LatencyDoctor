@@ -972,6 +972,36 @@ internal static class CoreTests
                 throw new InvalidOperationException(
                     "Из непонятного вывода выдуманы числа — это ложные данные в отчёте");
         });
+        RunTest(results, "Ссылка «сообщить о проблеме» ведёт куда надо и несёт версию", () =>
+        {
+            // Кнопка в окне — единственный путь, которым человек попадёт на страницу
+            // сообщений. Если ссылка сломается, о проблемах мы просто не узнаем.
+            var url = FeedbackLinks.NewIssueUrl();
+
+            if (!url.StartsWith(FeedbackLinks.RepositoryUrl + "/issues/new", StringComparison.Ordinal))
+                throw new InvalidOperationException($"Ссылка ведёт не на форму сообщения: {url}");
+
+            // Метка должна присутствовать, иначе сообщение не попадёт в разбор.
+            if (!url.Contains("labels=", StringComparison.Ordinal))
+                throw new InvalidOperationException("В ссылке нет метки — сообщение не попадёт в категорию");
+
+            // Версия должна подставляться: без неё невозможно понять, какая это сборка.
+            var version = Uri.EscapeDataString(AppVersion.Display);
+
+            if (!url.Contains(version, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"В ссылке нет версии программы — не понять, какая сборка у человека. Ждали «{version}»");
+
+            // Адрес должен быть пригоден для открытия: без пробелов и кириллицы в открытом виде.
+            if (url.Contains(' ', StringComparison.Ordinal))
+                throw new InvalidOperationException("В ссылке остались пробелы — браузер её не откроет");
+
+            if (Uri.TryCreate(url, UriKind.Absolute, out var parsed) is false)
+                throw new InvalidOperationException("Ссылка не является правильным адресом");
+
+            if (parsed.Scheme != "https")
+                throw new InvalidOperationException("Ссылка должна быть https");
+        });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };

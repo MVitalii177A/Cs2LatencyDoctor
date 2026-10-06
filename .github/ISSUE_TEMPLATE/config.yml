@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+
+contact_links:
+  - name: Не знаю, ошибка это или так задумано
+    url: https://github.com/MVitalii177A/Cs2LatencyDoctor/issues/new
+    about: Лучше написать, чем гадать. Опишите своими словами — я разберусь.
+
+  - name: Вопрос по программе
+    url: https://github.com/MVitalii177A/Cs2LatencyDoctor/issues/new
+    about: Спросите здесь. Отвечу и, если вопрос повторяется, добавлю ответ в описание.
+
+  - name: Прочитать описание программы
+    url: https://github.com/MVitalii177A/Cs2LatencyDoctor/blob/main/README.md
+    about: Что программа умеет, чего не делает и почему.

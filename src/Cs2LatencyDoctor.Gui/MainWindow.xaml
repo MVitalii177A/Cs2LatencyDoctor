@@ -134,6 +134,9 @@
             <Button Content="Сохранить отчёт" Style="{StaticResource BaseButton}"
                     Margin="8,0,0,0" Click="OnExportClick" IsEnabled="{Binding IsIdle}"
                     ToolTip="Сохранить результат проверки в файл: его можно показать провайдеру или выложить на форум."/>
+            <Button Content="Что-то не работает?" Style="{StaticResource BaseButton}"
+                    Margin="8,0,0,0" Click="OnReportProblemClick"
+                    ToolTip="Открыть страницу, где можно написать о проблеме. Версия программы подставится сама — приложите файл отчёта, и я разберусь."/>
             <Button Content="Перезапустить от администратора" Style="{StaticResource BaseButton}"
                     Margin="8,0,0,0" Click="OnElevateClick"/>
             <Button Content="♥ Поблагодарить" Style="{StaticResource DonateButton}"

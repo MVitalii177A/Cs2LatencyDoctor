@@ -1,0 +1,89 @@
+name: Что-то не работает
+description: Программа нашла не то, не запускается или выдала ошибку
+title: "[Ошибка] "
+labels: ["ошибка"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что нашли время написать. Чтобы починить, мне нужны факты, а не догадки —
+        поэтому несколько вопросов ниже. Заполнить их быстрее, чем кажется.
+
+        **Самое полезное — файл отчёта.** В программе есть кнопка «Сохранить отчёт»:
+        она запишет версию, все находки с цифрами и замеры. Приложите этот файл —
+        и большая часть вопросов отпадёт.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: Что случилось
+      description: Опишите своими словами. Что вы делали и что пошло не так.
+      placeholder: |
+        Нажал «Проверить компьютер», проверка дошла до «Смотрю состояние процессора»
+        и остановилась. Ждал пять минут — ничего не изменилось.
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-expected
+    attributes:
+      label: Что должно было быть
+      description: Как вы поняли, что это ошибка, а не так задумано.
+      placeholder: Проверка должна была закончиться и показать список находок.
+
+  - type: input
+    id: version
+    attributes:
+      label: Версия программы
+      description: Видна в окне сверху слева — «Версия 1.1.0 от 06.10.2026». Или в файле отчёта.
+      placeholder: "1.1.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Какой файл вы скачали
+      options:
+        - Cs2LatencyDoctor-1.1.0-full.zip (60 МБ, .NET не нужен)
+        - Cs2LatencyDoctor-1.1.0-lite.zip (маленький, нужен .NET)
+        - Cs2LatencyDoctor-1.1.0-console.zip (без окна)
+        - Собрал сам из исходников
+        - Не помню
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Версия Windows
+      description: Нажмите Win+R, введите winver и нажмите Enter. Там будет номер сборки.
+      placeholder: "Windows 10 Pro 22H2, сборка 19045.6456"
+    validations:
+      required: true
+
+  - type: textarea
+    id: report
+    attributes:
+      label: Файл отчёта
+      description: |
+        Нажмите «Сохранить отчёт» в программе, затем перетащите полученный файл сюда.
+        Если программа не запускается — приложите текст ошибки.
+      placeholder: Перетащите файл сюда или вставьте текст ошибки.
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Снимок экрана
+      description: Если видно что-то странное на экране — приложите снимок. Он помогает лучше слов.
+      placeholder: Перетащите картинку сюда.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Перед отправкой
+      options:
+        - label: Я поискал среди уже открытых сообщений — похожего не нашёл
+          required: true
+        - label: Я понимаю, что в отчёте могут быть сведения о моём компьютере, и не против этого
+          required: true
