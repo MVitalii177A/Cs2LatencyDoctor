@@ -2,6 +2,7 @@ using System.IO;
 using Cs2LatencyDoctor.Core;
 using Cs2LatencyDoctor.Core.Fixes;
 using Cs2LatencyDoctor.Core.Windows;
+using Cs2LatencyDoctor.Gui;
 using Microsoft.Win32;
 
 namespace Cs2LatencyDoctor.GuiTests;
@@ -372,6 +373,95 @@ internal static class CoreTests
                 throw new InvalidOperationException($"Причина «{skipped.NoHelpReason}», ожидалась NeedsAdmin");
             if (resultsList.Count == 0)
                 throw new InvalidOperationException("Проверка не вернула результатов");
+        });
+
+        RunTest(results, "Реквизиты для доната заполнены правильно", () =>
+        {
+            // Проверяем то, что проверяется надёжно: картинка QR на месте,
+            // адрес вписан и его формат соответствует указанной сети.
+            //
+            // Сам QR автоматически распознать не удалось: картинки от кошельков идут
+            // с рамкой, скруглениями и логотипом в центре, для них нужен полноценный
+            // детектор. Поэтому QR проверяется один раз глазами: навести телефон
+            // и сверить адрес с тем, что вписан в коде.
+            foreach (var option in DonationInfo.Options)
+            {
+                var imagePath = option.QrFullPath;
+
+                if (!File.Exists(imagePath))
+                    throw new InvalidOperationException(
+                        $"Нет картинки QR для «{option.Title}»: ожидается {imagePath}");
+
+                if (!option.HasAddress)
+                    throw new InvalidOperationException(
+                        $"У «{option.Title}» есть картинка QR, но не вписан адрес — " +
+                        "кнопка копирования будет отключена");
+
+                var address = option.Address;
+                var network = option.Network;
+
+                // Ethereum и BSC: 0x и 40 шестнадцатеричных знаков
+                var looksLikeEvm = address.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                                   && address.Length == 42
+                                   && address.Skip(2).All(Uri.IsHexDigit);
+
+                // Tron: начинается с T, длина 34, только base58
+                const string base58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+                var looksLikeTron = address.StartsWith('T')
+                                    && address.Length == 34
+                                    && address.All(base58.Contains);
+
+                var expectsEvm = network.Contains("ERC", StringComparison.OrdinalIgnoreCase)
+                                 || network.Contains("BEP", StringComparison.OrdinalIgnoreCase)
+                                 || network.Contains("Ethereum", StringComparison.OrdinalIgnoreCase)
+                                 || network.Contains("BSC", StringComparison.OrdinalIgnoreCase);
+
+                var expectsTron = network.Contains("TRC", StringComparison.OrdinalIgnoreCase)
+                                  || network.Contains("Tron", StringComparison.OrdinalIgnoreCase);
+
+                if (expectsEvm && !looksLikeEvm)
+                    throw new InvalidOperationException(
+                        $"Адрес «{option.Title}» не похож на адрес сети {network}: {address}. " +
+                        "Для ERC-20 и BEP-20 адрес начинается с 0x и содержит 40 hex-знаков.");
+
+                if (expectsTron && !looksLikeTron)
+                    throw new InvalidOperationException(
+                        $"Адрес «{option.Title}» не похож на адрес сети {network}: {address}. " +
+                        "Для TRC-20 адрес начинается с T и содержит 34 знака.");
+
+                if (!looksLikeEvm && !looksLikeTron)
+                    throw new InvalidOperationException(
+                        $"Адрес «{option.Title}» не похож ни на ERC-20, ни на TRC-20: {address}");
+            }
+        });
+
+        RunTest(results, "QR-код пригоден для сканирования", () =>
+        {
+            // Файл открывается как картинка, размеры достаточные, форма квадратная.
+            // Кривой размер или растянутая картинка — частая причина,
+            // по которой телефон не может прочитать код.
+            foreach (var option in DonationInfo.Options.Where(o => o.QrExists))
+            {
+                var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+                bitmap.BeginInit();
+                bitmap.UriSource = new Uri(option.QrFullPath);
+                bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                bitmap.EndInit();
+
+                if (bitmap.PixelWidth < 150 || bitmap.PixelHeight < 150)
+                    throw new InvalidOperationException(
+                        $"QR «{option.Title}» слишком мелкий: {bitmap.PixelWidth}x{bitmap.PixelHeight}. " +
+                        "Для надёжного сканирования нужно хотя бы 150x150.");
+
+                // Допускаем небольшое расхождение: при обрезке рамки стороны
+                // могут отличаться на пару пикселей, это не мешает сканеру.
+                var difference = Math.Abs(bitmap.PixelWidth - bitmap.PixelHeight);
+                if (difference > bitmap.PixelWidth * 0.03)
+                    throw new InvalidOperationException(
+                        $"QR «{option.Title}» заметно не квадратный: " +
+                        $"{bitmap.PixelWidth}x{bitmap.PixelHeight}. Скорее всего осталась рамка " +
+                        "или лишний край — сканер может не прочитать такой код.");
+            }
         });
 
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>

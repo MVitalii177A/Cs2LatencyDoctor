@@ -1,14 +1,31 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 
 namespace Cs2LatencyDoctor.Gui;
 
+/// <summary>Строка окна благодарности: один кошелёк с QR-кодом и адресом.</summary>
+public sealed class DonationRow
+{
+    public required string Title { get; init; }
+    public string NetworkText { get; init; } = string.Empty;
+    public string Address { get; init; } = string.Empty;
+    public string? Note { get; init; }
+    public BitmapImage? QrImage { get; init; }
+    public string? ImageProblem { get; init; }
+
+    public bool HasAddress => !string.IsNullOrWhiteSpace(Address);
+    public bool HasImage => QrImage is not null;
+    public bool HasNote => !string.IsNullOrWhiteSpace(Note);
+    public bool HasImageProblem => !string.IsNullOrWhiteSpace(ImageProblem);
+}
+
 /// <summary>
-/// Окно благодарности разработчикам: адрес кошелька USDT с QR-кодом и ссылка
-/// на DonationAlerts. Ничего никуда не отправляет и не требует — только показывает
-/// реквизиты, если человек сам захочет поддержать.
+/// Окно благодарности разработчикам: кошельки с QR-кодами и ссылка на DonationAlerts.
+/// Ничего никуда не отправляет и не требует — только показывает реквизиты,
+/// если человек сам захочет поддержать.
 /// </summary>
 public partial class DonationWindow : Window
 {
@@ -20,43 +37,7 @@ public partial class DonationWindow : Window
 
     private void FillContent()
     {
-        // ------------------------------------------------------------- USDT
-        if (DonationInfo.HasUsdt)
-        {
-            AddressText.Text = DonationInfo.UsdtAddress;
-            UsdtNetworkText.Text = "Сеть: " + DonationInfo.UsdtNetwork;
-        }
-        else
-        {
-            AddressText.Text = "Адрес пока не указан";
-            UsdtNetworkText.Text = "Сеть: " + DonationInfo.UsdtNetwork;
-            CopyAddressButton.IsEnabled = false;
-        }
-
-        // QR-код берём готовой картинкой: её рисует сам кошелёк или сервис,
-        // так надёжнее, чем строить код самостоятельно.
-        if (DonationInfo.QrImageExists)
-        {
-            try
-            {
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.UriSource = new Uri(DonationInfo.QrImagePath);
-                bitmap.CacheOption = BitmapCacheOption.OnLoad; // чтобы файл не был занят
-                bitmap.EndInit();
-
-                QrImage.Source = bitmap;
-            }
-            catch (Exception ex)
-            {
-                ShowQrProblem("Картинку QR не удалось открыть: " + ex.Message);
-            }
-        }
-        else
-        {
-            ShowQrProblem("Файл с QR-кодом не найден. Положите картинку рядом с программой: " +
-                          DonationInfo.QrImageRelativePath);
-        }
+        WalletList.ItemsSource = DonationInfo.Options.Select(BuildRow).ToList();
 
         // -------------------------------------------------- DonationAlerts
         if (DonationInfo.HasDonationAlerts)
@@ -72,28 +53,68 @@ public partial class DonationWindow : Window
                 "здесь будет кнопка, открывающая страницу в браузере.";
         }
 
+        // ------------------------------------------------------------ статус
         StatusText.Text = DonationInfo.IsConfigured
             ? "Спасибо, что пользуетесь программой. Поддержка не обязательна."
             : "Реквизиты ещё не заполнены разработчиком — поддержать пока нельзя. " +
               "Это не мешает работе программы.";
     }
 
-    private void ShowQrProblem(string message)
+    private static DonationRow BuildRow(DonationOption option)
     {
-        QrFrame.Visibility = Visibility.Collapsed;
-        QrMissingText.Visibility = Visibility.Visible;
-        QrMissingText.Text = message;
+        BitmapImage? image = null;
+        string? problem = null;
+
+        if (option.QrExists)
+        {
+            try
+            {
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.UriSource = new Uri(option.QrFullPath);
+
+                // OnLoad освобождает файл сразу: картинку можно заменить,
+                // не закрывая программу.
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.EndInit();
+                bitmap.Freeze();
+
+                image = bitmap;
+            }
+            catch (Exception ex)
+            {
+                problem = $"Картинку QR не удалось открыть ({ex.Message}). " +
+                          $"Файл: Assets\\{option.QrFileName}";
+            }
+        }
+        else
+        {
+            problem = "Картинка QR не найдена. Положите её рядом с программой: " +
+                      $"Assets\\{option.QrFileName}";
+        }
+
+        return new DonationRow
+        {
+            Title = option.Title,
+            NetworkText = option.NetworkText,
+            Address = option.HasAddress ? option.Address : "Адрес пока не указан",
+            Note = option.Note,
+            QrImage = image,
+            ImageProblem = problem
+        };
     }
 
     private void OnCopyAddressClick(object sender, RoutedEventArgs e)
     {
-        if (!DonationInfo.HasUsdt) return;
+        if (sender is not Button button) return;
+
+        var address = button.Tag as string;
+        if (string.IsNullOrWhiteSpace(address)) return;
 
         try
         {
-            Clipboard.SetText(DonationInfo.UsdtAddress);
-            StatusText.Text = "Адрес скопирован в буфер обмена. Не забудьте проверить сеть: " +
-                              DonationInfo.UsdtNetwork;
+            Clipboard.SetText(address);
+            StatusText.Text = "Адрес скопирован в буфер обмена. Проверьте сеть перед переводом.";
         }
         catch (Exception ex)
         {

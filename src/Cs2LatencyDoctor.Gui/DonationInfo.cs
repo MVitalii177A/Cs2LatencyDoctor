@@ -2,44 +2,85 @@ using System.IO;
 
 namespace Cs2LatencyDoctor.Gui;
 
+/// <summary>Один вариант поддержки: кошелёк с адресом и QR-кодом.</summary>
+public sealed class DonationOption
+{
+    /// <summary>Заголовок для человека: «USDT», «Bitcoin», «TON».</summary>
+    public required string Title { get; init; }
+
+    /// <summary>Сеть или пояснение: «TRC-20 (Tron)», «ERC-20 (Ethereum)».</summary>
+    public string Network { get; init; } = string.Empty;
+
+    /// <summary>Адрес кошелька. Пустая строка — вариант ещё не заполнен.</summary>
+    public string Address { get; init; } = string.Empty;
+
+    /// <summary>Имя файла картинки с QR-кодом внутри папки Assets.</summary>
+    public required string QrFileName { get; init; }
+
+    /// <summary>Короткая подсказка под заголовком, если нужна.</summary>
+    public string? Note { get; init; }
+
+    public bool HasAddress => !string.IsNullOrWhiteSpace(Address);
+
+    /// <summary>Полный путь к картинке рядом с программой.</summary>
+    public string QrFullPath => Path.Combine(AppContext.BaseDirectory, "Assets", QrFileName);
+
+    public bool QrExists => File.Exists(QrFullPath);
+
+    /// <summary>Можно ли показать вариант с пользой.</summary>
+    public bool IsUsable => HasAddress || QrExists;
+
+    public string NetworkText => string.IsNullOrWhiteSpace(Network) ? string.Empty : "Сеть: " + Network;
+}
+
 /// <summary>
 /// Реквизиты для благодарности разработчикам.
 ///
-/// ЧТО СЮДА ВПИСАТЬ — два места, помечены «ВСТАВИТЬ»:
+/// КАК ДОБАВИТЬ НОВЫЙ КОШЕЛЁК:
+///   1. Положите картинку с QR-кодом в папку Assets, например Assets\usdt-trc20.png
+///   2. Добавьте запись в список Options ниже и укажите тот же QrFileName.
+/// Порядок записей = порядок блоков в окне.
 ///
-/// 1. UsdtAddress — адрес кошелька USDT.
-///    Положите рядом с программой картинку с QR-кодом этого кошелька:
-///    Assets\usdt-qr.png  (имя файла обязательно такое).
-///    Сеть указывайте ту, для которой сделан QR: перепутанная сеть = потерянные деньги.
-///
-/// 2. DonationAlertsUrl — ссылка на страницу DonationAlerts.
-///
-/// Пока значения пустые, кнопка благодарности открывает окно и честно говорит,
-/// что реквизиты ещё не указаны — ничего не ломается.
+/// Пока адрес пустой, блок показывается, но кнопка копирования отключена —
+/// так видно, что вариант есть, а реквизит ещё не вписан.
 /// </summary>
 public static class DonationInfo
 {
-    /// <summary>ВСТАВИТЬ: адрес кошелька USDT (например TRC-20 начинается с T, ERC-20/BEP-20 с 0x).</summary>
-    public const string UsdtAddress = "";
-
-    /// <summary>ВСТАВИТЬ: сеть кошелька. Пишется рядом с адресом, чтобы не перепутали.</summary>
-    public const string UsdtNetwork = "TRC-20 (Tron)";
-
-    /// <summary>ВСТАВИТЬ: ссылка вида https://www.donationalerts.com/r/ваш_ник</summary>
+    /// <summary>Ссылка на страницу DonationAlerts. Пусто — кнопка будет неактивна.</summary>
     public const string DonationAlertsUrl = "";
 
-    /// <summary>Путь к картинке с QR-кодом кошелька относительно папки программы.</summary>
-    public const string QrImageRelativePath = @"Assets\usdt-qr.png";
+    /// <summary>Варианты поддержки. Добавляйте сколько нужно.</summary>
+    public static readonly IReadOnlyList<DonationOption> Options = new[]
+    {
+        new DonationOption
+        {
+            Title = "USDT",
+            Network = "ERC-20 (Ethereum)",
+            Address = "0xBA8E25ABbfe6182F2CB0b7e19925f0406ecFC8DE",
+            QrFileName = "usdt-erc20.png",
+            Note = "Сеть Ethereum: комиссия за перевод выше, чем у TRC-20 и BEP-20"
+        }
 
-    public static bool HasUsdt => !string.IsNullOrWhiteSpace(UsdtAddress);
+        // Второй кошелёк добавляется так — раскомментируйте и заполните:
+        //,
+        //new DonationOption
+        //{
+        //    Title = "USDT",
+        //    Network = "TRC-20 (Tron)",
+        //    Address = "T...",
+        //    QrFileName = "usdt-trc20.png",
+        //    Note = "Самая низкая комиссия сети из распространённых"
+        //}
+    };
+
     public static bool HasDonationAlerts => !string.IsNullOrWhiteSpace(DonationAlertsUrl);
 
-    /// <summary>Полный путь к картинке QR рядом с исполняемым файлом.</summary>
-    public static string QrImagePath =>
-        Path.Combine(AppContext.BaseDirectory, QrImageRelativePath);
+    /// <summary>Заполнен ли хотя бы один кошелёк.</summary>
+    public static bool HasAnyWallet => Options.Any(o => o.HasAddress);
 
-    public static bool QrImageExists => File.Exists(QrImagePath);
+    /// <summary>Есть ли что показать вообще.</summary>
+    public static bool IsConfigured => HasAnyWallet || HasDonationAlerts;
 
-    /// <summary>Всё ли готово, чтобы показать окно с пользой.</summary>
-    public static bool IsConfigured => HasUsdt || HasDonationAlerts;
+    /// <summary>Сколько кошельков ещё ждут адреса — для честного сообщения в окне.</summary>
+    public static int PendingCount => Options.Count(o => !o.HasAddress);
 }
