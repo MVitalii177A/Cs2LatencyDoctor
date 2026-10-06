@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 
 namespace Cs2LatencyDoctor.Gui;
@@ -208,49 +209,65 @@ public partial class DonationWindow : Window
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
 
     /// <summary>
-    /// Наведение на карточку кошелька: карточка плавно растёт, её рамка
-    /// подсвечивается. Рост сделан через RenderTransform — он не влияет
-    /// на раскладку, поэтому соседние карточки не сдвигаются.
+    /// Наведение на карточку кошелька: карточка заметно растёт, её рамка
+    /// подсвечивается, а сзади загорается зелёное свечение.
+    ///
+    /// Рост сделан через RenderTransform — он не влияет на раскладку,
+    /// поэтому соседние карточки не сдвигаются.
     /// </summary>
     private void OnCardMouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (sender is not Border card) return;
 
-        AnimateCard(card, scale: 1.04, borderBrush: (Brush)FindResource("AccentBrush"));
+        AnimateCard(card, CardHoverScale, 1.0, glowRadius: 110, glowOpacity: 1.0);
     }
 
     private void OnCardMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (sender is not Border card) return;
 
-        AnimateCard(card, scale: 1.0, borderBrush: (Brush)FindResource("LineBrush"));
+        AnimateCard(card, 1.0, 0.0, glowRadius: 0, glowOpacity: 0);
     }
 
-    private static void AnimateCard(Border card, double scale, Brush borderBrush)
+    /// <summary>Во сколько раз растёт карточка при наведении.</summary>
+    private const double CardHoverScale = 1.10;
+    private static void AnimateCard(Border card, double scale, double borderOpacity,
+        double glowRadius, double glowOpacity)
     {
-        var duration = TimeSpan.FromMilliseconds(160);
+        var duration = TimeSpan.FromMilliseconds(170);
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
 
-        // Плавное изменение размера
-        if (card.RenderTransform is ScaleTransform transform &&
-            transform.IsFrozen == false)
+        // --- рост карточки ---
+        if (card.RenderTransform is ScaleTransform transform)
         {
-            var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
-
-            var scaleX = new DoubleAnimation(scale, duration) { EasingFunction = easing };
-            var scaleY = new DoubleAnimation(scale, duration) { EasingFunction = easing };
-
-            transform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleX);
-            transform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
+            transform.BeginAnimation(ScaleTransform.ScaleXProperty,
+                new DoubleAnimation(scale, duration) { EasingFunction = easing });
+            transform.BeginAnimation(ScaleTransform.ScaleYProperty,
+                new DoubleAnimation(scale, duration) { EasingFunction = easing });
         }
 
-        // Подсветка рамки
-        var colour = new ColorAnimation(
-            (borderBrush as SolidColorBrush)?.Color ?? Colors.Transparent, duration)
+        // --- подсветка рамки ---
+        if (card.BorderBrush is SolidColorBrush)
         {
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
+            var colour = new ColorAnimation(
+                borderOpacity > 0 ? Color.FromRgb(0x2E, 0xA0, 0x43) : Colors.Transparent, duration)
+            {
+                EasingFunction = easing
+            };
 
-        card.BorderBrush = new SolidColorBrush(Colors.Transparent);
-        card.BorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, colour);
+            card.BorderBrush = new SolidColorBrush(Colors.Transparent);
+            card.BorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, colour);
+        }
+
+        // --- свечение сзади ---
+        // Анимируются только радиус и прозрачность: анимация самих параметров
+        // эффекта дешевле, чем подмена эффекта на каждый кадр.
+        if (card.Effect is DropShadowEffect glow)
+        {
+            glow.BeginAnimation(DropShadowEffect.BlurRadiusProperty,
+                new DoubleAnimation(glowRadius, duration) { EasingFunction = easing });
+            glow.BeginAnimation(DropShadowEffect.OpacityProperty,
+                new DoubleAnimation(glowOpacity, duration) { EasingFunction = easing });
+        }
     }
 }

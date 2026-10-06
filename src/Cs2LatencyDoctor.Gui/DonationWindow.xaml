@@ -90,23 +90,49 @@
 
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <!-- Ширина 262 подобрана так, чтобы три кошелька вставали
-                                 в один ряд при окне 940 px. При наведении карточка
-                                 растёт, поэтому ширина QR выбрана с запасом:
-                                 QR 196 + отступы 16 + рамка карточки 28 = 240,
-                                 при увеличении на 4% нужно 250 — влезает. -->
-                            <Border Style="{StaticResource Panel}" Width="262" Margin="5"
-                                    Cursor="Hand"
-                                    MouseEnter="OnCardMouseEnter"
-                                    MouseLeave="OnCardMouseLeave">
-                                <Border.RenderTransform>
-                                    <!-- Точка отсчёта в левом верхнем углу: карточка растёт
-                                         вправо и вниз, поэтому вторая строка не наезжает
-                                         на первую, когда карточек станет больше трёх. -->
-                                    <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"
-                                                    CenterX="0" CenterY="0"/>
-                                </Border.RenderTransform>
-                                <StackPanel>
+                            <!--
+                              Каждая карточка стоит в ячейке заранее увеличенного размера,
+                              а сама карточка при обычном состоянии сжата до 100/110.
+
+                              Зачем так: при наведении карточка растёт до 110% и светится
+                              наружу. Если бы ячейка была по размеру карточки, свечение
+                              обрезалось бы её границами, а рост сдвигал бы соседей.
+                              Поэтому место под увеличенный размер зарезервировано сразу,
+                              а видимый рост идёт масштабом.
+
+                              Ширина ячейки 288 = 262 (карточка) × 1.10, чтобы три
+                              карточки по-прежнему вставали в один ряд при окне 940.
+                            -->
+                            <Grid Width="288" Height="640" Margin="1,6" ClipToBounds="False">
+                                <Border Style="{StaticResource Panel}"
+                                        Width="262" Height="582"
+                                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                                        ClipToBounds="False"
+                                        MouseEnter="OnCardMouseEnter"
+                                        MouseLeave="OnCardMouseLeave">
+                                    <Border.RenderTransform>
+                                        <!-- Точка отсчёта в левом верхнем углу: карточка растёт
+                                             вправо и вниз, поэтому вторая строка не наезжает
+                                             на первую, когда карточек станет больше трёх. -->
+                                        <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"
+                                                        CenterX="0" CenterY="0"/>
+                                    </Border.RenderTransform>
+
+                                    <!--
+                                      Свечение сзади карточки: широкое, как подсветка из-под
+                                      низа. Рисуется за пределами карточки, поэтому ничто
+                                      не должно обрезать её края.
+                                    -->
+                                    <Border.Effect>
+                                        <DropShadowEffect x:Name="CardGlow"
+                                                          Color="#5CD97A"
+                                                          BlurRadius="0"
+                                                          ShadowDepth="0"
+                                                          Opacity="0"
+                                                          Direction="270"/>
+                                    </Border.Effect>
+
+                                    <StackPanel>
                                     <TextBlock Text="{Binding Title}" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock Text="{Binding NetworkText}" Foreground="#C9CBD3"
                                                FontSize="12" TextWrapping="Wrap"/>
@@ -158,8 +184,9 @@
                                             IsEnabled="{Binding HasAddress}"
                                             Click="OnCopyAddressClick"
                                             Visibility="{Binding HasAddress, Converter={StaticResource BoolToVisibility}}"/>
-                                </StackPanel>
-                            </Border>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
