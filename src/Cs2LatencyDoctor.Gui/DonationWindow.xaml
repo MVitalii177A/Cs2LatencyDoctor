@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Cs2LatencyDoctor.Gui"
         Title="Поблагодарить разработчиков"
-        Height="790" Width="880"
+        Height="800" Width="880"
         MinHeight="560" MinWidth="640"
         Background="#14151A"
         WindowStartupLocation="CenterOwner"
@@ -75,7 +75,7 @@
           ширину окна, а карточки стоят колонкой в центре — из-за этого шапка
           и нижний блок выглядели оторванными от содержимого.
         -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,4" MaxWidth="810" HorizontalAlignment="Center">
+        <StackPanel Grid.Row="0" Margin="0,0,0,16" MaxWidth="810" HorizontalAlignment="Center">
             <TextBlock Text="Поблагодарить разработчиков" Foreground="{StaticResource TextBrush}"
                        FontSize="19" FontWeight="Bold"/>
             <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12"
@@ -99,7 +99,7 @@
               шириной 810. На широком окне колонка стоит по центру, а не
               разъезжается по краям.
             -->
-            <StackPanel MaxWidth="810" HorizontalAlignment="Center" Margin="0,10">
+            <StackPanel MaxWidth="810" HorizontalAlignment="Center" Margin="0,14,0,8">
                 <ItemsControl x:Name="WalletList">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -124,7 +124,7 @@
                               Подложка не масштабируется, поэтому её эффект считается по
                               фактическим границам и остаётся целым.
                             -->
-                            <Canvas Width="262" Height="448" Margin="1,6" ClipToBounds="False">
+                            <Canvas Width="262" Height="400" Margin="1,6" ClipToBounds="False">
                                 <!--
                                   Масштаб стоит на обёртке, а не на карточке. Тогда карточка
                                   и подложка со свечением растут ВМЕСТЕ, сохраняя взаимное
@@ -132,10 +132,10 @@
                                   выйдет за границы подложки, и свечение останется лишь
                                   с одной стороны — это уже проверено замером.
                                 -->
-                                <Grid Width="262" Height="448" ClipToBounds="False">
+                                <Grid Width="262" Height="400" ClipToBounds="False">
                                     <Grid.RenderTransform>
                                         <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"
-                                                        CenterX="131" CenterY="224"/>
+                                                        CenterX="131" CenterY="200"/>
                                     </Grid.RenderTransform>
 
                                     <!--
@@ -151,7 +151,7 @@
                                       и при альфе 1 из 255 свечение пропадало полностью.
                                     -->
                                     <Border x:Name="CardGlowHost"
-                                            Width="204" Height="384"
+                                            Width="204" Height="336"
                                             HorizontalAlignment="Center" VerticalAlignment="Top"
                                             ClipToBounds="False"
                                             IsHitTestVisible="False">
@@ -169,7 +169,7 @@
                                     </Border>
 
                                     <Border Style="{StaticResource Panel}"
-                                            Width="232" Height="412"
+                                            Width="232" Height="364"
                                             HorizontalAlignment="Center" VerticalAlignment="Top"
                                             ClipToBounds="False"
                                             MouseEnter="OnCardMouseEnter"
@@ -203,7 +203,7 @@
                                             HorizontalAlignment="Center" Margin="0,8,0,0"
                                             Cursor="Hand"
                                             Visibility="{Binding HasImage, Converter={StaticResource BoolToVisibility}}">
-                                        <Image Source="{Binding QrImage}" Width="168" Height="168"
+                                        <Image Source="{Binding QrImage}" Width="160" Height="160"
                                                RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                                     </Border>
 
@@ -242,7 +242,7 @@
                 </ItemsControl>
 
                 <!-- DonationAlerts -->
-                <Border Style="{StaticResource Panel}" Margin="6,6,6,0">
+                <Border Style="{StaticResource Panel}" Margin="6,16,6,0">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -271,7 +271,7 @@
                         <Border x:Name="DonationAlertsQrFrame" Grid.Column="1" Background="White"
                                 CornerRadius="8" Padding="5" VerticalAlignment="Center"
                                 Visibility="Collapsed">
-                            <Image x:Name="DonationAlertsQrImage" Width="104" Height="104"
+                            <Image x:Name="DonationAlertsQrImage" Width="92" Height="92"
                                    RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                         </Border>
                     </Grid>
@@ -284,7 +284,7 @@
         </ScrollViewer>
 
         <!-- Низ -->
-        <Border Grid.Row="2" Margin="0,14,0,0" Background="#1C1D23" CornerRadius="8" Padding="12,10">
+        <Border Grid.Row="2" Margin="0,16,0,0" Background="#1C1D23" CornerRadius="8" Padding="12,10">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
