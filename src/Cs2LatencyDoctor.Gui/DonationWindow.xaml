@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Cs2LatencyDoctor.Gui"
         Title="Поблагодарить разработчиков"
-        Height="740" Width="940"
+        Height="790" Width="880"
         MinHeight="560" MinWidth="640"
         Background="#14151A"
         WindowStartupLocation="CenterOwner"
@@ -70,7 +70,12 @@
         </Grid.RowDefinitions>
 
         <!-- Заголовок -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+        <!--
+          Шапка ограничена по ширине. Без ограничения текст растягивался на всю
+          ширину окна, а карточки стоят колонкой в центре — из-за этого шапка
+          и нижний блок выглядели оторванными от содержимого.
+        -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,4" MaxWidth="810" HorizontalAlignment="Center">
             <TextBlock Text="Поблагодарить разработчиков" Foreground="{StaticResource TextBrush}"
                        FontSize="19" FontWeight="Bold"/>
             <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" FontSize="12"
@@ -89,7 +94,12 @@
               Из-за этого запаса карточки пришлось сделать уже: 232 вместо 262,
               чтобы три по-прежнему вставали в один ряд при окне 940.
             -->
-            <StackPanel Margin="22,10,22,10">
+            <!--
+              Всё содержимое — карточки, DonationAlerts, подпись — в одной колонке
+              шириной 810. На широком окне колонка стоит по центру, а не
+              разъезжается по краям.
+            -->
+            <StackPanel MaxWidth="810" HorizontalAlignment="Center" Margin="0,10">
                 <ItemsControl x:Name="WalletList">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -114,7 +124,7 @@
                               Подложка не масштабируется, поэтому её эффект считается по
                               фактическим границам и остаётся целым.
                             -->
-                            <Canvas Width="262" Height="568" Margin="1,6" ClipToBounds="False">
+                            <Canvas Width="262" Height="448" Margin="1,6" ClipToBounds="False">
                                 <!--
                                   Масштаб стоит на обёртке, а не на карточке. Тогда карточка
                                   и подложка со свечением растут ВМЕСТЕ, сохраняя взаимное
@@ -122,10 +132,10 @@
                                   выйдет за границы подложки, и свечение останется лишь
                                   с одной стороны — это уже проверено замером.
                                 -->
-                                <Grid Width="262" Height="568" ClipToBounds="False">
+                                <Grid Width="262" Height="448" ClipToBounds="False">
                                     <Grid.RenderTransform>
                                         <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"
-                                                        CenterX="131" CenterY="284"/>
+                                                        CenterX="131" CenterY="224"/>
                                     </Grid.RenderTransform>
 
                                     <!--
@@ -141,8 +151,8 @@
                                       и при альфе 1 из 255 свечение пропадало полностью.
                                     -->
                                     <Border x:Name="CardGlowHost"
-                                            Width="204" Height="482"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Width="204" Height="384"
+                                            HorizontalAlignment="Center" VerticalAlignment="Top"
                                             ClipToBounds="False"
                                             IsHitTestVisible="False">
                                         <Border.Background>
@@ -159,8 +169,8 @@
                                     </Border>
 
                                     <Border Style="{StaticResource Panel}"
-                                            Width="232" Height="510"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Width="232" Height="412"
+                                            HorizontalAlignment="Center" VerticalAlignment="Top"
                                             ClipToBounds="False"
                                             MouseEnter="OnCardMouseEnter"
                                             MouseLeave="OnCardMouseLeave">
@@ -178,7 +188,7 @@
                                                FontSize="12" TextWrapping="Wrap"/>
                                     <TextBlock Text="{Binding Note}" Foreground="#6E6E77"
                                                FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
-                                               MinHeight="30"
+                                               MinHeight="26"
                                                Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}"/>
 
                                     <TextBlock Text="{Binding ImageProblem}" Foreground="#F5A524" FontSize="11"
@@ -193,7 +203,7 @@
                                             HorizontalAlignment="Center" Margin="0,8,0,0"
                                             Cursor="Hand"
                                             Visibility="{Binding HasImage, Converter={StaticResource BoolToVisibility}}">
-                                        <Image Source="{Binding QrImage}" Width="176" Height="176"
+                                        <Image Source="{Binding QrImage}" Width="168" Height="168"
                                                RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                                     </Border>
 
@@ -267,8 +277,9 @@
                     </Grid>
                 </Border>
 
-                <TextBlock Text="Проверьте сеть перед переводом: адрес одной сети не подходит для другой. Отправка не в ту сеть означает потерю средств."
-                           Foreground="#8B8D98" FontSize="11" TextWrapping="Wrap" Margin="6,12,6,0"/>
+                <TextBlock Text="Проверьте сеть перед переводом: адрес одной сети не подходит для другой."
+                           Foreground="#8B8D98" FontSize="11" TextWrapping="Wrap"
+                           HorizontalAlignment="Center" Margin="0,10,0,0"/>
             </StackPanel>
         </ScrollViewer>
 
