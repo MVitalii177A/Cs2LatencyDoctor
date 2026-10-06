@@ -41,6 +41,30 @@ public sealed class BackgroundRow
     public bool Selected { get; set; }
 }
 
+/// <summary>Строка списка ручных действий: что сделать и почему программа не может сама.</summary>
+public sealed class ManualFixRow
+{
+    public required string Title { get; init; }
+
+    /// <summary>В какой проверке это найдено — чтобы человек понимал контекст.</summary>
+    public required string Finding { get; init; }
+
+    /// <summary>Почему программа не делает это сама.</summary>
+    public required string Reason { get; init; }
+}
+
+/// <summary>Строка журнала изменений: что поменяли и на какое значение.</summary>
+public sealed class JournalRow
+{
+    public required int Number { get; init; }
+    public required string Title { get; init; }
+    public required string Change { get; init; }
+    public required string When { get; init; }
+
+    /// <summary>Сама запись журнала: по ней выполняется возврат.</summary>
+    public required JournalEntry Entry { get; init; }
+}
+
 /// <summary>
 /// Логика окна. Держит состояние отдельно от разметки, чтобы её можно было проверить.
 /// Сеть здесь не используется вообще: только локальные замеры.
@@ -52,6 +76,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<FindingRow> Findings { get; } = new();
     public ObservableCollection<BackgroundRow> BackgroundApps { get; } = new();
+
+    /// <summary>
+    /// Что придётся сделать руками, с причиной почему. Отдельным списком, потому что
+    /// раньше эти пункты терялись среди находок, и человек мог решить, что программа
+    /// сделает всё сама.
+    /// </summary>
+    public ObservableCollection<ManualFixRow> ManualFixes { get; } = new();
+
+    /// <summary>Что программа уже изменила: видно, что и когда, с возможностью вернуть по одному.</summary>
+    public ObservableCollection<JournalRow> Journal { get; } = new();
+
+    public bool HasManualFixes => ManualFixes.Count > 0;
+    public bool HasJournal => Journal.Count > 0;
 
     private string _status = "Готово к проверке";
     public string Status
@@ -263,15 +300,40 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 });
             }
 
+            // Запоминаем сами находки, а не только строки для показа: по ним
+            // собирается план исправлений, чтобы применять ровно найденное.
+            _lastFindings = report.Results;
+
+            // Отдельно собираем то, что придётся делать руками. Без этого списка
+            // человек видит «программа исправит не всё» и не понимает, что осталось.
+            var manual = report.Results
+                .SelectMany(r => r.ManualFixes.Select(f => new ManualFixRow
+                {
+                    Title = f.Title,
+                    Finding = r.Title,
+                    Reason = f.WhyNotAutomatic ?? "Требуется действие руками"
+                }))
+                .GroupBy(m => m.Title)
+                .Select(g => g.First())
+                .ToList();
+
+            // И то, что программа уже изменила: с возможностью вернуть по одной записи.
+            var journalRows = BuildJournalRows();
+
             Ui(() =>
             {
                 Findings.Clear();
                 foreach (var row in rows) Findings.Add(row);
-            });
 
-            // Запоминаем сами находки, а не только строки для показа: по ним
-            // собирается план исправлений, чтобы применять ровно найденное.
-            _lastFindings = report.Results;
+                ManualFixes.Clear();
+                foreach (var row in manual) ManualFixes.Add(row);
+
+                Journal.Clear();
+                foreach (var row in journalRows) Journal.Add(row);
+
+                OnPropertyChanged(nameof(HasManualFixes));
+                OnPropertyChanged(nameof(HasJournal));
+            });
 
             Summary = report.Summary;
             Status = $"Готово за {report.Duration.TotalSeconds:0.#} с";
@@ -313,6 +375,94 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// </summary>
     private FixPlan BuildPlan() =>
         _lastFindings.Count == 0 ? FixPlan.Everything : FixPlan.FromFindings(_lastFindings);
+
+    /// <summary>Собрать строки журнала для показа в окне.</summary>
+    private static List<JournalRow> BuildJournalRows()
+    {
+        try
+        {
+            var journal = new UndoJournal();
+
+            return journal.Entries
+                .Select((e, index) => new JournalRow
+                {
+                    Number = index + 1,
+                    Title = e.Title,
+                    Change = string.IsNullOrEmpty(e.OldValue)
+                        ? "параметра не было → " + e.NewValue
+                        : $"{e.OldValue} → {e.NewValue}",
+                    When = e.AppliedAt.ToString("dd.MM HH:mm"),
+                    Entry = e
+                })
+                .ToList();
+        }
+        catch
+        {
+            return new List<JournalRow>();
+        }
+    }
+
+    /// <summary>
+    /// Вернуть одну запись журнала. Возврат идёт в фоновом потоке: снятие настройки
+    /// может занять секунды, а окно не должно замереть.
+    /// </summary>
+    public void RevertJournalEntry(JournalRow row)
+    {
+        if (IsBusy || row is null) return;
+
+        if (!IsAdministrator)
+        {
+            ApplyResult = "Нужны права администратора: возврат меняет системные настройки.";
+            OnPropertyChanged(nameof(ApplyResult));
+            return;
+        }
+
+        IsBusy = true;
+        Status = "Возвращаю: " + row.Title + "…";
+
+        Task.Run(() =>
+        {
+            try
+            {
+                var context = new DiagnosticContext
+                {
+                    IsAdministrator = IsAdministrator,
+                    OnProgress = message => Status = message
+                };
+
+                var journal = new UndoJournal();
+                var report = FixRunner.RevertOne(context, journal, row.Entry);
+
+                ApplyResult = string.Join(Environment.NewLine, report.Results.Select(r =>
+                    (r.Outcome == FixOutcome.Applied ? "✓ " : "✗ ") + r.Title + ": " + r.Message));
+
+                Status = report.FailedCount > 0 ? "Возврат не подтвердился" : "Возвращено";
+            }
+            catch (Exception ex)
+            {
+                ApplyResult = "Ошибка при возврате: " + ex.Message;
+                Status = "Ошибка";
+            }
+            finally
+            {
+                RefreshJournal();
+                IsBusy = false;
+            }
+        });
+    }
+
+    /// <summary>Обновить список журнала: вызывается после применения и возврата.</summary>
+    public void RefreshJournal()
+    {
+        var rows = BuildJournalRows();
+
+        Ui(() =>
+        {
+            Journal.Clear();
+            foreach (var row in rows) Journal.Add(row);
+            OnPropertyChanged(nameof(HasJournal));
+        });
+    }
 
     public void ApplyFixes()
     {

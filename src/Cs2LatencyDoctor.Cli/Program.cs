@@ -35,6 +35,8 @@ var showHistory = false;
 var doPause = false;
 var doResume = false;
 var assumeYes = false;
+var showJournal = false;
+var revertOneNumber = 0;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -58,6 +60,17 @@ for (var i = 0; i < args.Length; i++)
             break;
         case "--revert":
             doRevert = true;
+            break;
+        case "--journal":
+            showJournal = true;
+            break;
+        case "--revert-one":
+            // Откат одной записи: номер берём из --journal.
+            if (i + 1 < args.Length && int.TryParse(args[i + 1], out var entryNumber))
+            {
+                revertOneNumber = entryNumber;
+                i++;
+            }
             break;
         case "--history":
             showHistory = true;
@@ -89,6 +102,12 @@ if (showHistory)
     return HistoryCommand.Run();
 }
 
+// ------------------------------------------------------------------ журнал
+if (showJournal || revertOneNumber > 0)
+{
+    return JournalCommand.Run(showJournal, revertOneNumber);
+}
+
 // ----------------------------------------------------------- пауза фоновых
 if (doPause || doResume)
 {
@@ -111,6 +130,8 @@ if (showHelp)
           cs2latency --plan                      что можно исправить (ничего не меняет)
           cs2latency --fix                       применить безопасные исправления
           cs2latency --revert                    вернуть всё как было
+        cs2latency --journal                   что именно было изменено
+        cs2latency --revert-one N              вернуть одну запись из журнала
           cs2latency --history                   история замеров и что изменилось
           cs2latency --pause                     поставить фоновые программы на паузу
           cs2latency --resume                    вернуть фоновые программы обратно
@@ -835,6 +856,93 @@ internal static class PauseCommand
 /// История замеров: сколько раз запускали, что нашли и что изменилось.
 /// Всё это лежит в файле на компьютере пользователя и никуда не отправляется.
 /// </summary>
+/// <summary>
+/// Журнал изменений: что программа поменяла, когда и на какое значение.
+/// Видно не только путь к файлу, но и содержимое — иначе непонятно, что откатывать.
+/// </summary>
+internal static class JournalCommand
+{
+    public static int Run(bool show, int revertNumber)
+    {
+        var journal = new UndoJournal();
+
+        Console.WriteLine();
+        Console.WriteLine("  ЖУРНАЛ ИЗМЕНЕНИЙ");
+        Console.WriteLine("  " + new string('-', 70));
+        Console.WriteLine("  Файл: " + journal.JournalPathText());
+        Console.WriteLine();
+
+        var entries = journal.Entries;
+
+        if (entries.Count == 0)
+        {
+            Console.WriteLine("  Журнал пуст: программа ещё ничего не меняла в системе.");
+            Console.WriteLine();
+            return 0;
+        }
+
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var e = entries[i];
+            Console.WriteLine($"  {i + 1}. {e.Title}");
+            Console.WriteLine($"     было: {Show(e.OldValue)}   стало: {Show(e.NewValue)}");
+            Console.WriteLine($"     изменено: {e.AppliedAt:dd.MM.yyyy HH:mm}   ({e.FixId})");
+            Console.WriteLine();
+        }
+
+        if (!show) return 0;
+
+        // Откат одной записи: человек указал номер из списка выше.
+        if (revertNumber <= 0)
+        {
+            Console.WriteLine("  Вернуть одну запись:  cs2latency --revert-one N");
+            Console.WriteLine("  Вернуть всё:          cs2latency --revert");
+            return 0;
+        }
+
+        if (revertNumber > entries.Count)
+        {
+            Console.WriteLine($"  Записи с номером {revertNumber} нет: в журнале {entries.Count}.");
+            return 1;
+        }
+
+        if (!HostInfo.IsAdministrator())
+        {
+            Console.WriteLine("  Нужны права администратора: возврат меняет системные настройки.");
+            return 1;
+        }
+
+        var target = entries[revertNumber - 1];
+        var context = new DiagnosticContext { IsAdministrator = true };
+        var report = FixRunner.RevertOne(context, journal, target);
+
+        Console.WriteLine();
+        Console.WriteLine("  ВОЗВРАТ ОДНОЙ ЗАПИСИ");
+        Console.WriteLine("  " + new string('-', 70));
+
+        foreach (var r in report.Results)
+        {
+            var mark = r.Outcome switch
+            {
+                FixOutcome.Applied => "✓",
+                FixOutcome.AlreadyOk => "•",
+                FixOutcome.Skipped => "—",
+                _ => "✗"
+            };
+
+            Console.WriteLine($"    {mark} {r.Title}: {r.Message}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"  {report.Summary}");
+
+        return report.FailedCount > 0 ? 3 : 0;
+    }
+
+    /// <summary>Пустое значение показываем словами: пустая строка в отчёте непонятна.</summary>
+    private static string Show(string value) =>
+        string.IsNullOrEmpty(value) ? "(не было)" : value;
+}
 internal static class HistoryCommand
 {
     public static int Run()

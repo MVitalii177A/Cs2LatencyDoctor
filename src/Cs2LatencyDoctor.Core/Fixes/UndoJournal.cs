@@ -196,6 +196,20 @@ public sealed class UndoJournal
         Save();
     }
 
+    /// <summary>
+    /// Убрать одну запись: она уже возвращена и держать её в журнале незачем.
+    /// Нужно для отката по одной записи — раньше можно было вернуть только всё сразу.
+    /// </summary>
+    public bool Remove(JournalEntry entry)
+    {
+        EnsureLoaded();
+
+        if (!_entries.Remove(entry)) return false;
+
+        Save();
+        return true;
+    }
+
     private void Load()
     {
         try

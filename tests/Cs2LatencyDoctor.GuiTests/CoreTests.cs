@@ -188,6 +188,55 @@ internal static class CoreTests
             results.Add(("Откат очищает только возвращённые записи", false, null));
         }
 
+        RunTest(results, "Откат одной записи не трогает остальные", () =>
+        {
+            // Раньше откат возвращал весь журнал целиком. Если человек хотел отменить
+            // только сетевые правки, оставив настройки игры, выбора у него не было.
+            var store = new UndoJournal();
+
+            // Идентификаторы уникальны для каждого прогона: журнал лежит на диске
+            // и не очищается, поэтому одинаковые имена накапливались бы от запуска к запуску.
+            var runTag = Guid.NewGuid().ToString("N")[..8];
+
+            var first = new JournalEntry
+            {
+                FixId = "test." + runTag + ".one", Title = "Первое " + runTag, Kind = "registryValue",
+                Location = @"SOFTWARE\Cs2LatencyDoctorTest\SingleRevert",
+                Name = "One", OldValue = "1", NewValue = "2"
+            };
+            var second = new JournalEntry
+            {
+                FixId = "test." + runTag + ".two", Title = "Второе " + runTag, Kind = "registryValue",
+                Location = @"SOFTWARE\Cs2LatencyDoctorTest\SingleRevert",
+                Name = "Two", OldValue = "3", NewValue = "4"
+            };
+
+            store.Add(first);
+            store.Add(second);
+
+            // Журнал на диске может содержать записи от прошлых запусков, поэтому
+            // проверяем судьбу именно своих двух записей, а не общее количество.
+            var mine = store.Entries.Where(e => e.FixId.Contains(runTag, StringComparison.Ordinal)).ToList();
+            if (mine.Count != 2)
+                throw new InvalidOperationException($"В журнале {mine.Count} своих записей вместо двух");
+
+            var context = new DiagnosticContext { IsAdministrator = false };
+
+            // Откатываем первую: реестр в этой среде недоступен, поэтому проверяем
+            // главное — что вторая запись осталась на месте, а первая попала в отчёт.
+            var report = FixRunner.RevertOne(context, store, first);
+
+            if (report.Results.Count != 1)
+                throw new InvalidOperationException($"Ожидался один результат, получено {report.Results.Count}");
+
+            if (!store.Entries.Contains(second))
+                throw new InvalidOperationException("Откат одной записи убрал из журнала чужую запись");
+
+            // Повторный откат той же записи должен честно сказать, что её уже нет.
+            var again = FixRunner.RevertOne(context, store, first);
+            if (again.Results.All(r => r.Outcome != FixOutcome.Failed))
+                throw new InvalidOperationException("Повторный откат не сообщил, что записи уже нет");
+        });
         RunTest(results, "Неизвестный вид записи не считается откаченным", () =>
         {
             // Такого вида записей программа не создаёт. Откат обязан честно

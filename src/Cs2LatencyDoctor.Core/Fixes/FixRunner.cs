@@ -120,6 +120,59 @@ public sealed class FixRunner
     }
 
     /// <summary>
+    /// Вернуть ОДНО изменение по записи журнала.
+    ///
+    /// Зачем по одной: раньше кнопка отката возвращала весь журнал целиком, и если
+    /// человек хотел отменить только сетевые правки, оставив настройки игры, выбора
+    /// у него не было. Возвращаем через общий путь, чтобы поведение совпадало
+    /// с полным откатом.
+    /// </summary>
+    public static FixReport RevertOne(DiagnosticContext context, UndoJournal journal, JournalEntry entry)
+    {
+        var results = new List<FixResult>();
+
+        var known = journal.Entries.Contains(entry);
+        if (!known)
+        {
+            results.Add(FixResult.Failed(entry.FixId, entry.Title,
+                "Этой записи уже нет в журнале — возможно, её вернули раньше"));
+            return new FixReport { Results = results, JournalPath = journal.FilePath };
+        }
+
+        context.Progress($"Возвращаю: {entry.Title}…");
+
+        var reverter = CreateDefault();
+        var fix = reverter._fixes.FirstOrDefault(f => f.Id == entry.FixId);
+
+        try
+        {
+            var ok = fix is not null ? fix.Revert(entry, context) : RevertFromJournalData(entry);
+
+            if (!ok)
+            {
+                results.Add(FixResult.Failed(entry.FixId, entry.Title,
+                    fix is null
+                        ? "Не удалось вернуть по данным журнала — проверьте параметр вручную"
+                        : "Откат не подтвердился — проверьте параметр вручную"));
+                return new FixReport { Results = results, JournalPath = journal.FilePath };
+            }
+
+            journal.Remove(entry);
+
+            results.Add(FixResult.Applied(entry.FixId, entry.Title,
+                $"Возвращено значение {entry.OldValue}" +
+                (fix is null ? " (по данным журнала)" : string.Empty),
+                new[] { entry }));
+        }
+        catch (Exception ex)
+        {
+            results.Add(FixResult.Failed(entry.FixId, entry.Title, "Исключение: " + ex.Message));
+        }
+
+        return new FixReport { Results = results, JournalPath = journal.FilePath };
+    }
+
+    /// <summary>
     /// Вернуть всё, что записано в журнале. Идём в обратном порядке:
     /// так откат повторяет историю в обратную сторону.
     /// </summary>
