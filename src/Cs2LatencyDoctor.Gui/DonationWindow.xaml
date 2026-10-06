@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Cs2LatencyDoctor.Gui"
         Title="Поблагодарить разработчиков"
-        Height="700" Width="940"
+        Height="740" Width="940"
         MinHeight="560" MinWidth="640"
         Background="#14151A"
         WindowStartupLocation="CenterOwner"
@@ -89,20 +89,24 @@
 
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Style="{StaticResource Panel}" Width="400" Margin="6">
+                            <!-- Ширина 270 подобрана так, чтобы три кошелька вставали
+                                 в один ряд при окне 940 px: 3 × 280 = 840 помещается
+                                 в доступные 885 px. -->
+                            <Border Style="{StaticResource Panel}" Width="270" Margin="5">
                                 <StackPanel>
                                     <TextBlock Text="{Binding Title}" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock Text="{Binding NetworkText}" Foreground="#C9CBD3"
                                                FontSize="12" TextWrapping="Wrap"/>
                                     <TextBlock Text="{Binding Note}" Foreground="#6E6E77"
                                                FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                               MinHeight="30"
                                                Visibility="{Binding HasNote, Converter={StaticResource BoolToVisibility}}"/>
 
                                     <!-- QR-код из готовой картинки -->
-                                    <Border Background="White" CornerRadius="8" Padding="8"
-                                            HorizontalAlignment="Center" Margin="0,12,0,10"
+                                    <Border Background="White" CornerRadius="8" Padding="6"
+                                            HorizontalAlignment="Center" Margin="0,6,0,8"
                                             Visibility="{Binding HasImage, Converter={StaticResource BoolToVisibility}}">
-                                        <Image Source="{Binding QrImage}" Width="200" Height="200"
+                                        <Image Source="{Binding QrImage}" Width="164" Height="164"
                                                RenderOptions.BitmapScalingMode="NearestNeighbor"/>
                                     </Border>
 
@@ -142,11 +146,11 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <StackPanel Grid.Column="0" Margin="0,0,24,0">
                             <TextBlock Text="DonationAlerts — картой или из кошелька"
                                        Style="{StaticResource SectionTitle}"/>
                             <TextBlock TextWrapping="Wrap" Foreground="#C9CBD3" FontSize="12"
-                                       Text="Откроется страница в браузере: можно поддержать разово или подписаться."/>
+                                       Text="Откроется страница в браузере: поддержать можно разово или подпиской."/>
                             <TextBlock x:Name="DonationAlertsMissingText" Foreground="#F5A524"
                                        FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
                                        Visibility="Collapsed"/>
@@ -154,7 +158,7 @@
 
                         <Button x:Name="DonationAlertsButton" Grid.Column="1" Content="Открыть DonationAlerts"
                                 Style="{StaticResource BaseButton}" VerticalAlignment="Center"
-                                Click="OnDonationAlertsClick"/>
+                                MinWidth="200" Click="OnDonationAlertsClick"/>
                     </Grid>
                 </Border>
 
