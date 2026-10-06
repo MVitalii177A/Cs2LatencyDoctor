@@ -411,6 +411,11 @@ internal static class CoreTests
                                     && address.Length == 34
                                     && address.All(base58.Contains);
 
+                // TON: современный формат — 48 знаков url-safe base64
+                // (буквы, цифры, дефис и подчёркивание). Старый формат — 48 hex-знаков.
+                const string tonChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+                var looksLikeTon = address.Length == 48 && address.All(tonChars.Contains);
+
                 var expectsEvm = network.Contains("ERC", StringComparison.OrdinalIgnoreCase)
                                  || network.Contains("BEP", StringComparison.OrdinalIgnoreCase)
                                  || network.Contains("Ethereum", StringComparison.OrdinalIgnoreCase)
@@ -418,6 +423,8 @@ internal static class CoreTests
 
                 var expectsTron = network.Contains("TRC", StringComparison.OrdinalIgnoreCase)
                                   || network.Contains("Tron", StringComparison.OrdinalIgnoreCase);
+
+                var expectsTon = network.Contains("TON", StringComparison.OrdinalIgnoreCase);
 
                 if (expectsEvm && !looksLikeEvm)
                     throw new InvalidOperationException(
@@ -429,9 +436,14 @@ internal static class CoreTests
                         $"Адрес «{option.Title}» не похож на адрес сети {network}: {address}. " +
                         "Для TRC-20 адрес начинается с T и содержит 34 знака.");
 
-                if (!looksLikeEvm && !looksLikeTron)
+                if (expectsTon && !looksLikeTon)
                     throw new InvalidOperationException(
-                        $"Адрес «{option.Title}» не похож ни на ERC-20, ни на TRC-20: {address}");
+                        $"Адрес «{option.Title}» не похож на адрес сети {network}: {address}. " +
+                        "Для TON адрес содержит 48 знаков в формате base64 (буквы, цифры, - и _).");
+
+                if (!looksLikeEvm && !looksLikeTron && !looksLikeTon)
+                    throw new InvalidOperationException(
+                        $"Адрес «{option.Title}» не похож ни на ERC-20, ни на TRC-20, ни на TON: {address}");
             }
         });
 

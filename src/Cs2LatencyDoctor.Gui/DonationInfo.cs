@@ -58,10 +58,18 @@ public static class DonationInfo
             Network = "ERC-20 (Ethereum)",
             Address = "0xBA8E25ABbfe6182F2CB0b7e19925f0406ecFC8DE",
             QrFileName = "usdt-erc20.png",
-            Note = "Сеть Ethereum: комиссия за перевод выше, чем у TRC-20 и BEP-20"
+            Note = "Сеть Ethereum: комиссия за перевод выше, чем у остальных вариантов"
+        },
+        new DonationOption
+        {
+            Title = "Toncoin (TON)",
+            Network = "TON",
+            Address = "UQDl9rDk6Z6nsibI0j_fuJi1m4iPcgfZZdvAH8W6LjVQwoKN",
+            QrFileName = "ton.png",
+            Note = "Комиссия копейки, перевод доходит за секунды"
         }
 
-        // Второй кошелёк добавляется так — раскомментируйте и заполните:
+        // Ещё один кошелёк добавляется так — раскомментируйте и заполните:
         //,
         //new DonationOption
         //{
@@ -69,7 +77,7 @@ public static class DonationInfo
         //    Network = "TRC-20 (Tron)",
         //    Address = "T...",
         //    QrFileName = "usdt-trc20.png",
-        //    Note = "Самая низкая комиссия сети из распространённых"
+        //    Note = "Самая низкая комиссия из распространённых"
         //}
     };
 
