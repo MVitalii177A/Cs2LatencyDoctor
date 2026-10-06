@@ -119,14 +119,6 @@
                                         ClipToBounds="False"
                                         MouseEnter="OnCardMouseEnter"
                                         MouseLeave="OnCardMouseLeave">
-                                    <Border.RenderTransform>
-                                        <!-- Точка отсчёта в левом верхнем углу: карточка растёт
-                                             вправо и вниз, поэтому вторая строка не наезжает
-                                             на первую, когда карточек станет больше трёх. -->
-                                        <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"
-                                                        CenterX="0" CenterY="0"/>
-                                    </Border.RenderTransform>
-
                                     <!--
                                       Свечение сзади карточки. Размытие подобрано так,
                                       чтобы ореол был ярким и плотным у самых краёв:
@@ -145,6 +137,10 @@
                                     </Border.Effect>
 
                                     <StackPanel>
+                                        <StackPanel.RenderTransform>
+                                            <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"
+                                                            CenterX="0" CenterY="0"/>
+                                        </StackPanel.RenderTransform>
                                     <TextBlock Text="{Binding Title}" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock Text="{Binding NetworkText}" Foreground="#C9CBD3"
                                                FontSize="12" TextWrapping="Wrap"/>

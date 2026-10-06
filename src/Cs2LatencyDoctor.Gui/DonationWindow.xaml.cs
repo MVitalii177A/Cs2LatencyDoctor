@@ -219,6 +219,11 @@ public partial class DonationWindow : Window
     {
         if (sender is not Border card) return;
 
+        // Наведённая карточка поднимается на верхний слой. Без этого её свечение
+        // уходило под соседние карточки: те рисуются позже и перекрывали ореол —
+        // выглядело так, будто свечение обрезано.
+        Panel.SetZIndex(card, 100);
+
         // Размытие 60 с запасом места вокруг карточки (22 px по краям плюс
         // свободное место в ряду) даёт законченный ореол: он успевает
         // растаять до границы и не выглядит обрубленным.
@@ -228,6 +233,8 @@ public partial class DonationWindow : Window
     private void OnCardMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
     {
         if (sender is not Border card) return;
+
+        Panel.SetZIndex(card, 1);
 
         AnimateCard(card, 1.0, 0.0, glowRadius: 0, glowOpacity: 0);
     }
@@ -240,8 +247,12 @@ public partial class DonationWindow : Window
         var duration = TimeSpan.FromMilliseconds(170);
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
 
-        // --- рост карточки ---
-        if (card.RenderTransform is ScaleTransform transform)
+        // --- рост содержимого ---
+        // Масштабируется именно содержимое, а не рамка карточки: эффект свечения
+        // WPF считает до масштабирования, поэтому при росте рамки ореол обрезался
+        // бы по её исходному размеру и выглядел обрубленным.
+        if (card.Child is FrameworkElement content &&
+            content.RenderTransform is ScaleTransform transform)
         {
             transform.BeginAnimation(ScaleTransform.ScaleXProperty,
                 new DoubleAnimation(scale, duration) { EasingFunction = easing });
