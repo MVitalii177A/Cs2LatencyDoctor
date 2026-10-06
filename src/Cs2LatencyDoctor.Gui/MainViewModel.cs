@@ -30,6 +30,24 @@ public sealed class FindingRow
     public bool HasWhy => !string.IsNullOrWhiteSpace(Why);
     public bool HasFix => !string.IsNullOrWhiteSpace(FixHint);
     public bool HasRecommendation => !string.IsNullOrWhiteSpace(Recommendation);
+
+    /// <summary>
+    /// Идентификатор находки: по нему собирается план применения.
+    /// </summary>
+    public required string FindingId { get; init; }
+
+    /// <summary>
+    /// Отмечено ли исправление этой находки. Галочка показывается только там,
+    /// где программа правда может исправить, и стоит по умолчанию.
+    ///
+    /// Зачем это. Раньше кнопка применяла всё найденное сразу, и выбрать часть
+    /// было нельзя. Применялось только найденное, поэтому вреда не было, но
+    /// человек, который хотел поменять одно и проверить эффект, не мог.
+    /// </summary>
+    public bool ApplySelected { get; set; }
+
+    /// <summary>Можно ли применять эту находку по кнопке.</summary>
+    public required bool CanApply { get; init; }
 }
 
 /// <summary>Строка списка фоновых программ.</summary>
@@ -307,9 +325,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     ? string.Join("; ", result.Fixes.Select(f => f.Title))
                     : string.Empty;
 
+                // Галочка выбора: показываем только там, где программа действительно
+                // может исправить. Обещать кнопку там, где её нет, нельзя.
+                var canApply = result.ApplicableFixes.Count > 0;
+
                 rows.Add(new FindingRow
                 {
                     Mark = mark,
+                    FindingId = result.Id,
                     Title = result.Title,
                     Detail = result.Detail,
                     Why = result.Why ?? string.Empty,
@@ -318,7 +341,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     Recommendation = result.Recommendation ?? string.Empty,
                     RecommendationTitle = result.NoHelpReason == NoHelpReason.None
                         ? "Что сделать вам"
-                        : "Что делать: " + DescribeReason(result.NoHelpReason)
+                        : "Что делать: " + DescribeReason(result.NoHelpReason),
+                    CanApply = canApply,
+                    // Отмечено по умолчанию: человек нажал «Применить» именно за этим.
+                    ApplySelected = canApply
                 });
             }
 
@@ -409,8 +435,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
     /// Что именно применять. Если проверка ещё не выполнялась, план пуст и программа
     /// применит всё, что умеет: так честнее, чем молча ничего не сделать.
     /// </summary>
-    private FixPlan BuildPlan() =>
-        _lastFindings.Count == 0 ? FixPlan.Everything : FixPlan.FromFindings(_lastFindings);
+    private FixPlan BuildPlan()
+    {
+        if (_lastFindings.Count == 0) return FixPlan.Everything;
+
+        // Оставляем только те находки, у которых человек не снял галочку.
+        var selected = Findings.Where(f => f.ApplySelected).Select(f => f.FindingId).ToHashSet();
+
+        if (selected.Count == 0) return FixPlan.FromFindings(Array.Empty<CheckResult>());
+
+        return FixPlan.FromFindings(_lastFindings.Where(r => selected.Contains(r.Id)));
+    }
+
+    /// <summary>Сколько находок отмечено к исправлению. Для текста на кнопке.</summary>
+    public int SelectedForApplyCount => Findings.Count(f => f.CanApply && f.ApplySelected);
 
     /// <summary>
     /// Сохранить отчёт в файл. Нужно, чтобы результат можно было показать:

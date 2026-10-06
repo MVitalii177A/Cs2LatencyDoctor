@@ -5,7 +5,7 @@ using System.Text;
 
 namespace Cs2LatencyDoctor.Core.Windows;
 
-/// <summary>Каким способом удалось (или не удалось) замерить задержку.</summary>
+    /// <summary>Каким способом удалось (или не удалось) замерить задержку.</summary>
 public enum ProbeMethod
 {
     /// <summary>Прямой ICMP через .NET — точный, даёт время с точностью до мс.</summary>
@@ -22,6 +22,71 @@ public enum ProbeMethod
     /// и для игры даже показательнее: это тот же путь, по которому идёт игровой трафик.
     /// </summary>
     TcpConnect = 3
+}
+
+/// <summary>
+/// Разбор ответа ping.exe.
+///
+/// Зачем это нужно. Программа умеет мерить задержку двумя способами: ICMP напрямую
+/// и TCP-подключением. Бывает, что закрыты оба, а ping.exe всё равно проходит —
+/// например, когда system-wide прокси перехватывает TCP, а ICMP отдаётся отдельно.
+/// Миллисекунды оттуда не достать, но потери видно, а потери в игре важнее.
+///
+/// Вывод ping.exe локализован, поэтому ищем числа по смыслу строк, а не по словам:
+/// строка с «потер» или «lost» содержит процент, а строка со «средн» или «Average»
+/// содержит времена. Если разобрать не удалось — честно возвращаем «неизвестно»,
+/// а не выдумываем числа.
+/// </summary>
+public static class PingExeParser
+{
+    /// <summary>Что удалось узнать из вывода ping.exe.</summary>
+    /// <param name="Sent">Сколько пакетов отправлено. 0 — не удалось узнать.</param>
+    /// <param name="Received">Сколько пришло. 0 — не удалось узнать.</param>
+    public readonly record struct Result(int Sent, int Received)
+    {
+        public bool Parsed => Sent > 0;
+    }
+
+    public static Result Parse(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output)) return new Result(0, 0);
+
+        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var raw in lines)
+        {
+            var line = raw.Trim();
+
+            // Строка итогов: «Packets: Sent = 4, Received = 4, Lost = 0 (0% loss)»
+            // или «Пакетов: отправлено = 4, получено = 4, потеряно = 0 (0% потерь)».
+            var sent = FindNumberAfter(line, "Sent", "отправлено");
+            var received = FindNumberAfter(line, "Received", "получено");
+
+            if (sent > 0 && received >= 0) return new Result(sent, received);
+        }
+
+        return new Result(0, 0);
+    }
+
+    /// <summary>
+    /// Число, идущее после указанного слова. Проверяем оба языка: вывод ping.exe
+    /// зависит от языка Windows, а не от языка программы.
+    /// </summary>
+    private static int FindNumberAfter(string line, string english, string russian)
+    {
+        foreach (var marker in new[] { english, russian })
+        {
+            var index = line.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) continue;
+
+            var rest = line[(index + marker.Length)..];
+            var digits = new string(rest.SkipWhile(c => !char.IsDigit(c)).TakeWhile(char.IsDigit).ToArray());
+
+            if (digits.Length > 0 && int.TryParse(digits, out var value)) return value;
+        }
+
+        return 0;
+    }
 }
 
 /// <summary>Итог замера задержки: не среднее, а распределение. Именно "пила" ломает ощущения в игре.</summary>
@@ -102,6 +167,12 @@ public static class LatencyProbe
         if (primary.Available)
             return await RunDotNetAsync(target, addresses[0], seconds, spikeThresholdMs, onTick, ct);
 
+        // ICMP напрямую недоступен. Прежде чем объявить замер невозможным, пробуем
+        // ping.exe: бывает, что raw-сокеты закрыты, а утилите система отвечать разрешает.
+        // Миллисекунд оттуда не достать, но потери видно — а потери в игре важнее.
+        var viaPing = await RunPingExeAsync(target, seconds, spikeThresholdMs, onTick, ct);
+        if (viaPing.Received > 0) return viaPing;
+
         return new LatencyProbeResult
         {
             Target = target,
@@ -109,6 +180,57 @@ public static class LatencyProbe
             Received = 0,
             Method = ProbeMethod.Blocked,
             SpikeThresholdMs = spikeThresholdMs
+        };
+    }
+
+    /// <summary>
+    /// Замер через ping.exe: потери видно, миллисекунды — нет.
+    ///
+    /// Вызывается как последний запасной способ, когда ICMP напрямую не проходит.
+    /// Если и он не дал ответов, возвращаем результат с нулём полученных: вызывающая
+    /// сторона сама решит, пробовать ли TCP.
+    /// </summary>
+    public static async Task<LatencyProbeResult> RunPingExeAsync(
+        string target,
+        int seconds,
+        double spikeThresholdMs = 3.0,
+        Action<int, int>? onTick = null,
+        CancellationToken ct = default)
+    {
+        // ping.exe считает пакетами, а не секундами. Берём число запросов,
+        // близкое к длительности замера, но не меньше четырёх: на одном пакете
+        // о потерях судить нельзя.
+        var count = Math.Clamp(seconds, 4, 20);
+
+        var output = await RunProcessAsync("ping.exe", $"-n {count} {target}", ct);
+
+        var parsed = PingExeParser.Parse(output ?? string.Empty);
+
+        if (!parsed.Parsed)
+        {
+            return new LatencyProbeResult
+            {
+                Target = target,
+                Sent = 0,
+                Received = 0,
+                Method = ProbeMethod.Blocked,
+                SpikeThresholdMs = spikeThresholdMs
+            };
+        }
+
+        onTick?.Invoke(parsed.Sent, parsed.Sent);
+
+        return new LatencyProbeResult
+        {
+            Target = target,
+            Method = ProbeMethod.PingExe,
+            Sent = parsed.Sent,
+            Received = parsed.Received,
+            // Времён нет: ping.exe их отдаёт в текстовом виде с точностью до миллисекунды,
+            // и на быстрых каналах они округляются до нуля. Показывать ноль как медиану
+            // означало бы врать о задержке, поэтому оставляем нули и говорим словами.
+            SpikeThresholdMs = spikeThresholdMs,
+            Detail = "через ping.exe: видны только потери, время ответа недоступно"
         };
     }
 

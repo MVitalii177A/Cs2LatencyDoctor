@@ -931,6 +931,47 @@ internal static class CoreTests
                 throw new InvalidOperationException(
                     "Строка для интерфейса не содержит номер версии");
         });
+        RunTest(results, "Вывод ping.exe разбирается на обоих языках Windows", () =>
+        {
+            // Это последний запасной способ замера. Вывод ping.exe локализован,
+            // поэтому разбор идёт по смыслу строк, а не по конкретным словам.
+            // Ошибка здесь означает, что программа не увидит потери там, где
+            // другие способы закрыты, — то есть промолчит о реальной проблеме.
+            const string english = """
+                Pinging 1.1.1.1 with 32 bytes of data:
+                Reply from 1.1.1.1: bytes=32 time=31ms TTL=57
+
+                Ping statistics for 1.1.1.1:
+                    Packets: Sent = 4, Received = 3, Lost = 1 (25% loss),
+                """;
+
+            const string russian = """
+                Обмен пакетами с 1.1.1.1 [1.1.1.1] с 32 байтами данных:
+                Ответ от 1.1.1.1: число байт=32 время=31мс TTL=57
+
+                Статистика Ping для 1.1.1.1:
+                    Пакетов: отправлено = 4, получено = 3, потеряно = 1
+                    (25% потерь)
+                """;
+
+            var parsedEn = PingExeParser.Parse(english);
+            var parsedRu = PingExeParser.Parse(russian);
+
+            if (!parsedEn.Parsed || parsedEn.Sent != 4 || parsedEn.Received != 3)
+                throw new InvalidOperationException(
+                    $"Английский вывод разобран неверно: отправлено {parsedEn.Sent}, получено {parsedEn.Received}");
+
+            if (!parsedRu.Parsed || parsedRu.Sent != 4 || parsedRu.Received != 3)
+                throw new InvalidOperationException(
+                    $"Русский вывод разобран неверно: отправлено {parsedRu.Sent}, получено {parsedRu.Received}");
+
+            // Непонятный вывод: честно «не разобрано», а не выдуманные числа.
+            var unknown = PingExeParser.Parse("что-то пошло не так");
+
+            if (unknown.Parsed)
+                throw new InvalidOperationException(
+                    "Из непонятного вывода выдуманы числа — это ложные данные в отчёте");
+        });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };

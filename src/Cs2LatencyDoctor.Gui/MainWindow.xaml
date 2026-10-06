@@ -161,7 +161,11 @@
             <Border Grid.Column="0" Style="{StaticResource Panel}">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top">
-                        <TextBlock Text="НАХОДКИ" Style="{StaticResource SectionTitle}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="НАХОДКИ" Style="{StaticResource SectionTitle}" Margin="0"/>
+                            <TextBlock Text="Галочка — что исправлять по кнопке" Foreground="#6E6E77"
+                                       FontSize="11" VerticalAlignment="Center" Margin="10,0,0,2"/>
+                        </StackPanel>
                         <TextBlock Text="{Binding Summary}" Foreground="{StaticResource MutedBrush}"
                                    FontSize="12" Margin="0,0,0,10" TextWrapping="Wrap"/>
                     </StackPanel>
@@ -172,16 +176,29 @@
                                 <DataTemplate>
                                     <Border Background="#20222A" CornerRadius="6" Padding="12" Margin="0,0,0,8">
                                         <StackPanel>
-                                            <StackPanel Orientation="Horizontal">
-                                                <Border Background="{Binding Color}" CornerRadius="3"
-                                                        Padding="6,2" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding Mark}" Foreground="White"
-                                                               FontSize="10" FontWeight="Bold"/>
-                                                </Border>
-                                                <TextBlock Text="{Binding Title}" Foreground="#E6E7EB"
-                                                           FontSize="13" FontWeight="SemiBold"
-                                                           Margin="8,0,0,0" VerticalAlignment="Center"/>
-                                            </StackPanel>
+                                            <DockPanel>
+                                                <!--
+                                                  Галочка выбора: показывается только там, где программа
+                                                  действительно может исправить. Снятая галочка означает,
+                                                  что кнопка «Применить» эту находку не тронет.
+                                                -->
+                                                <CheckBox DockPanel.Dock="Right" VerticalAlignment="Center"
+                                                          Margin="8,0,0,0"
+                                                          IsChecked="{Binding ApplySelected}"
+                                                          Visibility="{Binding CanApply, Converter={StaticResource BoolToVisibility}}"
+                                                          ToolTip="Отметьте, что исправлять. Без галочки программа это не тронет."/>
+
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Border Background="{Binding Color}" CornerRadius="3"
+                                                            Padding="6,2" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Mark}" Foreground="White"
+                                                                   FontSize="10" FontWeight="Bold"/>
+                                                    </Border>
+                                                    <TextBlock Text="{Binding Title}" Foreground="#E6E7EB"
+                                                               FontSize="13" FontWeight="SemiBold"
+                                                               Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </DockPanel>
                                             <TextBlock Text="{Binding Detail}" Foreground="#C9CBD3"
                                                        FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
                                             <TextBlock Text="{Binding Why}" Foreground="#8B8D98"
