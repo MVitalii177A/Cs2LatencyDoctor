@@ -229,11 +229,8 @@ public partial class DonationWindow : Window
         // замером: без этого свечение справа от средней карточки не рисовалось.
         RaiseCard(card, top: true);
 
-        // Два слоя свечения: широкий оранжевый ореол вокруг рамки и узкое
-        // янтарное ядро у самых краёв. Вместе дают тёплое перетекание цвета.
-        // Размытие 60 с запасом места вокруг карточки даёт законченный ореол:
-        // он успевает растаять до границы и не выглядит обрубленным.
-        AnimateCard(card, CardHoverScale, 1.0, glowRadius: 60, glowOpacity: 1.0);
+        // Свечение тусклее и короче: мягкая подсветка, а не яркое пятно.
+        AnimateCard(card, CardHoverScale, 1.0, glowRadius: 38, glowOpacity: 0.55);
     }
 
     private void OnCardMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
@@ -244,7 +241,7 @@ public partial class DonationWindow : Window
 
         // Опускаем ячейку обратно только после того, как свечение погаснет:
         // иначе на середине затухания ореол резко уйдёт под соседнюю карточку.
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(160) };
         timer.Tick += (_, _) =>
         {
             timer.Stop();
@@ -300,7 +297,7 @@ public partial class DonationWindow : Window
     private static void AnimateCard(Border card, double scale, double borderOpacity,
         double glowRadius, double glowOpacity)
     {
-        var duration = TimeSpan.FromMilliseconds(170);
+        var duration = TimeSpan.FromMilliseconds(130);
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
 
         // --- рост карточки ---

@@ -100,21 +100,22 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <!--
-                              Карточка стоит в Canvas: ячейка заранее отведена по размеру
-                              увеличенной карточки, поэтому рост не сдвигает соседей.
+                              Карточка стоит по ЦЕНТРУ ячейки, а ячейка заранее отведена
+                              по размеру увеличенной карточки. Поэтому при росте карточка
+                              расширяется во все стороны от центра, а не уползает вправо,
+                              и при этом не сдвигает соседей.
 
-                              Растут сами Ширина и Высота карточки, а не масштаб. Так
+                              Растут сами Ширина и Высота карточки, а не масштаб: так
                               содержимое перестраивается под новый размер и пропорции
-                              остаются правильными. Масштаб для этого не годится: рамка
-                              осталась бы прежней, а содержимое вылезло за её края.
+                              остаются правильными.
 
                               Побочная выгода: эффект свечения WPF считает по фактическим
                               границам, поэтому при росте карточки ореол остаётся целым.
                             -->
-                            <Canvas Width="258" Height="564" Margin="1,6" ClipToBounds="False">
+                            <Canvas Width="262" Height="568" Margin="1,6" ClipToBounds="False">
                                 <Border Style="{StaticResource Panel}"
                                         Width="232" Height="510"
-                                        Canvas.Left="0" Canvas.Top="0"
+                                        Canvas.Left="15" Canvas.Top="29"
                                         ClipToBounds="False"
                                         MouseEnter="OnCardMouseEnter"
                                         MouseLeave="OnCardMouseLeave">
@@ -147,20 +148,6 @@
                                           При росте карточки они разъезжались, и казалось,
                                           что увеличиваются отдельные элементы, а не карточка.
                                         -->
-                                        <!--
-                                          Второй слой свечения: узкое янтарное ядро у самых
-                                          краёв рамки. Вместе с оранжевым ореолом даёт
-                                          перетекание цвета — у карточки теплее и светлее,
-                                          дальше насыщеннее.
-                                        -->
-                                        <StackPanel.Effect>
-                                            <DropShadowEffect x:Name="CardGlowCore"
-                                                              Color="#FFB259"
-                                                              BlurRadius="0"
-                                                              ShadowDepth="0"
-                                                              Opacity="0"
-                                                              Direction="270"/>
-                                        </StackPanel.Effect>
 
                                         <TextBlock Text="{Binding Title}" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock Text="{Binding NetworkText}" Foreground="#C9CBD3"
