@@ -100,22 +100,21 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <!--
-                              Каждая карточка стоит в ячейке заранее увеличенного размера,
-                              а сама карточка при обычном состоянии сжата до 100/110.
+                              Карточка стоит в Canvas: ячейка заранее отведена по размеру
+                              увеличенной карточки, поэтому рост не сдвигает соседей.
 
-                              Зачем так: при наведении карточка растёт до 110% и светится
-                              наружу. Если бы ячейка была по размеру карточки, рост сдвигал бы
-                              соседей. Поэтому место под увеличенный размер зарезервировано
-                              сразу, а видимый рост идёт масштабом.
+                              Растут сами Ширина и Высота карточки, а не масштаб. Так
+                              содержимое перестраивается под новый размер и пропорции
+                              остаются правильными. Масштаб для этого не годится: рамка
+                              осталась бы прежней, а содержимое вылезло за её края.
 
-                              Ширина ячейки 256 = 232 (карточка) × 1.103, чтобы три
-                              карточки вставали в один ряд при окне 940 с учётом
-                              запаса по краям под свечение.
+                              Побочная выгода: эффект свечения WPF считает по фактическим
+                              границам, поэтому при росте карточки ореол остаётся целым.
                             -->
-                            <Grid Width="256" Height="560" Margin="1,6" ClipToBounds="False">
+                            <Canvas Width="258" Height="564" Margin="1,6" ClipToBounds="False">
                                 <Border Style="{StaticResource Panel}"
                                         Width="232" Height="510"
-                                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                                        Canvas.Left="0" Canvas.Top="0"
                                         ClipToBounds="False"
                                         MouseEnter="OnCardMouseEnter"
                                         MouseLeave="OnCardMouseLeave">
@@ -156,11 +155,7 @@
                                                               Direction="270"/>
                                         </StackPanel.Effect>
 
-                                        <StackPanel.RenderTransform>
-                                            <ScaleTransform x:Name="CardScale" ScaleX="1" ScaleY="1"
-                                                            CenterX="0" CenterY="0"/>
-                                        </StackPanel.RenderTransform>
-                                    <TextBlock Text="{Binding Title}" Style="{StaticResource SectionTitle}"/>
+                                        <TextBlock Text="{Binding Title}" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock Text="{Binding NetworkText}" Foreground="#C9CBD3"
                                                FontSize="12" TextWrapping="Wrap"/>
                                     <TextBlock Text="{Binding Note}" Foreground="#6E6E77"
@@ -173,9 +168,8 @@
                                                Visibility="{Binding HasImageProblem, Converter={StaticResource BoolToVisibility}}"/>
 
                                     <!--
-                                      QR-код. При наведении на карточку она плавно
-                                      увеличивается: RenderTransform не влияет на раскладку,
-                                      поэтому соседние карточки не сдвигаются.
+                                      QR-код. При наведении растёт вся карточка вместе
+                                      с рамкой, поэтому пропорции сохраняются.
                                     -->
                                     <Border Background="White" CornerRadius="10" Padding="8"
                                             HorizontalAlignment="Center" Margin="0,8,0,0"
@@ -213,7 +207,7 @@
                                             Visibility="{Binding HasAddress, Converter={StaticResource BoolToVisibility}}"/>
                                     </StackPanel>
                                 </Border>
-                            </Grid>
+                            </Canvas>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>

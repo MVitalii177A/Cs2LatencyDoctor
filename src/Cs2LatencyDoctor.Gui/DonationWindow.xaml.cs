@@ -242,30 +242,37 @@ public partial class DonationWindow : Window
 
     /// <summary>Во сколько раз растёт карточка при наведении.</summary>
     private const double CardHoverScale = 1.10;
+
+    /// <summary>Размеры карточки в покое. При наведении растут на CardHoverScale.</summary>
+    private const double CardIdleWidth = 232;
+    private const double CardIdleHeight = 510;
+
     private static void AnimateCard(Border card, double scale, double borderOpacity,
         double glowRadius, double glowOpacity)
     {
         var duration = TimeSpan.FromMilliseconds(170);
         var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
 
-        // --- рост содержимого ---
-        // Масштабируется именно содержимое, а не рамка карточки: эффект свечения
-        // WPF считает до масштабирования, поэтому при росте рамки ореол обрезался
-        // бы по её исходному размеру и выглядел обрубленным.
-        if (card.Child is FrameworkElement content &&
-            content.RenderTransform is ScaleTransform transform)
-        {
-            transform.BeginAnimation(ScaleTransform.ScaleXProperty,
-                new DoubleAnimation(scale, duration) { EasingFunction = easing });
-            transform.BeginAnimation(ScaleTransform.ScaleYProperty,
-                new DoubleAnimation(scale, duration) { EasingFunction = easing });
-        }
+        // --- рост карточки ---
+        // Растут Ширина и Высота, а не масштаб. Так содержимое перестраивается
+        // под новый размер и пропорции остаются правильными. При масштабе рамка
+        // осталась бы прежней, а содержимое вылезло за её края — карточка
+        // выглядела сломанной.
+        //
+        // Место под увеличенный размер отведено заранее (ячейка Canvas),
+        // поэтому соседние карточки не сдвигаются. И побочно: эффект свечения
+        // WPF считает по фактическим границам, поэтому ореол остаётся целым.
+        card.BeginAnimation(FrameworkElement.WidthProperty,
+            new DoubleAnimation(CardIdleWidth * scale, duration) { EasingFunction = easing });
+        card.BeginAnimation(FrameworkElement.HeightProperty,
+            new DoubleAnimation(CardIdleHeight * scale, duration) { EasingFunction = easing });
 
         // --- подсветка рамки ---
         if (card.BorderBrush is SolidColorBrush)
         {
+            // Тёплый оранжевый — в тон свечению.
             var colour = new ColorAnimation(
-                borderOpacity > 0 ? Color.FromRgb(0x2E, 0xA0, 0x43) : Colors.Transparent, duration)
+                borderOpacity > 0 ? Color.FromRgb(0xFF, 0x8A, 0x24) : Colors.Transparent, duration)
             {
                 EasingFunction = easing
             };
