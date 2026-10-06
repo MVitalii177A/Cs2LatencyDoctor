@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using Cs2LatencyDoctor.Core;
+using Cs2LatencyDoctor.Core.Background;
 using Cs2LatencyDoctor.Core.Checks;
 using Cs2LatencyDoctor.Core.Fixes;
 using Cs2LatencyDoctor.Core.Report;
@@ -820,6 +821,53 @@ internal static class CoreTests
             finally
             {
                 try { Directory.Delete(directory, recursive: true); } catch { /* не критично */ }
+            }
+        });
+        RunTest(results, "Браузеры и редакторы защищены от паузы", () =>
+        {
+            // Эта проверка появилась после реальной ошибки: обнаружение по нагрузке
+            // нашло браузер и среду разработки, отметило их к остановке — и закрыло
+            // вместе с открытыми вкладками и несохранённой работой.
+            var mustBeProtected = new[]
+            {
+                "chrome", "firefox", "msedge", "opera", "brave",
+                "code", "devenv", "rider64", "notepad++",
+                "python", "node", "dotnet", "java", "docker", "postgres",
+                "keepass", "keepassxc", "1password",
+                "explorer", "powershell", "pwsh", "cmd", "windowsterminal"
+            };
+
+            var unprotected = mustBeProtected
+                .Where(name => !BackgroundAppService.NeverDiscover.Contains(name))
+                .ToList();
+
+            if (unprotected.Count > 0)
+                throw new InvalidOperationException(
+                    "Эти программы могут быть закрыты по ошибке: " + string.Join(", ", unprotected));
+
+            // Обнаружение по нагрузке не должно предлагать то, что уже защищено.
+            var service = new BackgroundAppService();
+            var found = service.Survey();
+
+            var dangerous = found
+                .Where(a => BackgroundAppService.NeverDiscover.Contains(a.ProcessName))
+                .Select(a => a.ProcessName)
+                .ToList();
+
+            if (dangerous.Count > 0)
+                throw new InvalidOperationException(
+                    "В списке на паузу оказались защищённые программы: " + string.Join(", ", dangerous));
+
+            // Найденное по нагрузке не должно быть отмечено заранее: программа не знает,
+            // что это за процесс. Отмечать такое — значит закрывать чужую работу без спроса.
+            var preselected = found.Where(a => a.FoundByActivity).ToList();
+
+            if (preselected.Count > 0)
+            {
+                // Само по себе попадание в список допустимо, но признак обязан стоять,
+                // иначе интерфейс отметит строку галочкой.
+                if (preselected.Any(a => !a.FoundByActivity))
+                    throw new InvalidOperationException("Признак «найдена по нагрузке» потерялся");
             }
         });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>

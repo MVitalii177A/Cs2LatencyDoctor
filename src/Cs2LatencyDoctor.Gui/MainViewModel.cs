@@ -168,8 +168,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Details = $"{app.ProcessCount} проц., {app.MemoryMb:0} МБ" +
                       (app.OpenConnections > 0 ? $", соединений: {app.OpenConnections}" : string.Empty),
             Reason = app.Reason,
-            Selected = app.Title.Contains("Торрент", StringComparison.OrdinalIgnoreCase)
-                       || app.Title.Contains("Dropbox", StringComparison.OrdinalIgnoreCase)
+
+            // Найденное по нагрузке НИКОГДА не отмечаем заранее: программа не знает,
+            // что это за процесс и есть ли в нём несохранённая работа. Первая версия
+            // этого поиска отмечала найденное и закрыла браузер вместе с открытыми
+            // вкладками. Такие строки человек выбирает сам.
+            Selected = !app.FoundByActivity &&
+                       (app.Title.Contains("Торрент", StringComparison.OrdinalIgnoreCase)
+                        || app.Title.Contains("Dropbox", StringComparison.OrdinalIgnoreCase))
         }).ToList();
 
         if (rows.Count == 0)

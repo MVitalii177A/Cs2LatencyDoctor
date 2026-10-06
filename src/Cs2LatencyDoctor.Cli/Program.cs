@@ -37,6 +37,7 @@ var doPause = false;
 var doResume = false;
 var assumeYes = false;
 var showJournal = false;
+var showPauseList = false;
 var revertOneNumber = 0;
 string? exportPath = null;
 
@@ -84,6 +85,9 @@ for (var i = 0; i < args.Length; i++)
         case "--pause":
             doPause = true;
             break;
+        case "--pause-list":
+            showPauseList = true;
+            break;
         case "--resume":
             doResume = true;
             break;
@@ -114,6 +118,28 @@ if (showJournal || revertOneNumber > 0)
     return JournalCommand.Run(showJournal, revertOneNumber);
 }
 
+// ------------------------------------------- свой список программ для паузы
+if (showPauseList)
+{
+    var path = BackgroundAppService.EnsureUserListFile();
+
+    if (path is null)
+    {
+        Console.Error.WriteLine("  Не удалось создать файл: каталог данных недоступен.");
+        return 4;
+    }
+
+    Console.WriteLine();
+    Console.WriteLine("  СВОЙ СПИСОК ПРОГРАММ ДЛЯ ПАУЗЫ");
+    Console.WriteLine("  " + new string('-', 70));
+    Console.WriteLine("  Файл: " + path);
+    Console.WriteLine();
+    Console.WriteLine("  Впишите в него имена процессов — по одному в строке, без .exe.");
+    Console.WriteLine("  Эти программы появятся в списке кандидатов при следующем запуске.");
+    Console.WriteLine();
+    return 0;
+}
+
 // ----------------------------------------------------------- пауза фоновых
 if (doPause || doResume)
 {
@@ -141,6 +167,7 @@ if (showHelp)
         cs2latency --revert-one N              вернуть одну запись из журнала
           cs2latency --history                   история замеров и что изменилось
           cs2latency --pause                     поставить фоновые программы на паузу
+        cs2latency --pause-list                файл со своим списком программ для паузы
           cs2latency --resume                    вернуть фоновые программы обратно
           cs2latency --selftest                  проверить логику оценки на записанных данных
 
