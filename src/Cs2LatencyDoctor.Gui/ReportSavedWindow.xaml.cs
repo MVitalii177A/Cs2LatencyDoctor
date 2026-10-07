@@ -4,17 +4,20 @@ using System.Windows.Controls;
 namespace Cs2LatencyDoctor.Gui;
 
 /// <summary>
-/// Окно «отчёт сохранён»: показывает путь к файлу, даёт его скопировать
-/// и, если получится, открыть папку.
+/// Окно «отчёт сохранён»: показывает путь к файлу и даёт его скопировать.
 ///
-/// Почему не просто окно сообщения с кнопкой «открыть папку». Проводник на части
-/// машин не запускается из программы: он падает с ошибкой 0xc0000142 ещё до
-/// старта окна. Показать это человеку как «ошибку приложения» — значит напугать
-/// его без причины: с отчётом всё в порядке, не открылась только папка.
+/// Почему только копирование и никаких кнопок «открыть папку». Проводник Windows
+/// не запускается как дочерний процесс: он завершается сразу с кодом 1, и система
+/// при этом показывает окно «Ошибка при запуске приложения (0xc0000142)».
+/// Это не сбой отчёта и не сбой программы — так ведёт себя проводник.
 ///
-/// Поэтому здесь три пути к одному и тому же: скопировать путь одной кнопкой,
-/// выделить текст вручную, попробовать открыть папку. Работает хотя бы один —
-/// и человек найдёт свой файл.
+/// Проверено на этой машине: explorer.exe из программы падает, а notepad.exe
+/// и mspaint.exe запускаются нормально. Значит дело именно в проводнике,
+/// и обойти это нельзя.
+///
+/// Показывать человеку «ошибку приложения» из-за необязательной кнопки нельзя:
+/// он решит, что сломался отчёт. Поэтому кнопки открытия здесь нет — вместо неё
+/// понятное объяснение и копирование пути, которое работает всегда.
 /// </summary>
 public partial class ReportSavedWindow : Window
 {
@@ -33,6 +36,11 @@ public partial class ReportSavedWindow : Window
             ExtraText.Text = extra;
             ExtraText.Visibility = Visibility.Visible;
         }
+
+        // Путь к папке показываем сразу: человеку проще найти папку глазами,
+        // чем разбираться с буфером обмена.
+        var directory = System.IO.Path.GetDirectoryName(path) ?? path;
+        FolderText.Text = "Папка: " + directory;
     }
 
     /// <summary>Скопировать путь: работает везде и не зависит от проводника.</summary>
@@ -41,38 +49,37 @@ public partial class ReportSavedWindow : Window
         try
         {
             Clipboard.SetText(_path);
-            CopiedText.Text = "✓ Путь скопирован. Вставьте его в адресную строку проводника.";
-            CopiedText.Visibility = Visibility.Visible;
+            CopiedText.Foreground = System.Windows.Media.Brushes.MediumSeaGreen;
+            CopiedText.Text = "✓ Путь скопирован. Вставьте его в адресную строку проводника " +
+                              "и нажмите Enter — файл откроется.";
         }
         catch
         {
+            CopiedText.Foreground = System.Windows.Media.Brushes.Goldenrod;
             CopiedText.Text = "Не удалось скопировать: буфер обмена занят другой программой. " +
                               "Выделите путь выше и скопируйте вручную (Ctrl+C).";
-            CopiedText.Visibility = Visibility.Visible;
         }
+
+        CopiedText.Visibility = Visibility.Visible;
     }
 
-    /// <summary>
-    /// Попробовать открыть папку. Если проводник не запускается — говорим об этом
-    /// спокойно и сразу даём выход: путь уже можно скопировать.
-    ///
-    /// Окно не закрываем даже при успехе: человеку может понадобиться ещё раз
-    /// скопировать путь или прочитать, что в отчёте.
-    /// </summary>
-    private void OnOpenFolderClick(object sender, RoutedEventArgs e)
+    /// <summary>Скопировать папку: иногда удобнее вставить папку, а не файл.</summary>
+    private void OnCopyFolderClick(object sender, RoutedEventArgs e)
     {
-        if (ReportLauncher.TryOpenFolder(_path, out var error))
+        var directory = System.IO.Path.GetDirectoryName(_path) ?? _path;
+
+        try
         {
-            CopiedText.Text = "Открываю папку… Если окно проводника не появилось, " +
-                              "скопируйте путь кнопкой выше — это работает всегда.";
-            CopiedText.Visibility = Visibility.Visible;
-            return;
+            Clipboard.SetText(directory);
+            CopiedText.Foreground = System.Windows.Media.Brushes.MediumSeaGreen;
+            CopiedText.Text = "✓ Путь к папке скопирован. Вставьте его в адресную строку проводника.";
+        }
+        catch
+        {
+            CopiedText.Foreground = System.Windows.Media.Brushes.Goldenrod;
+            CopiedText.Text = "Не удалось скопировать: буфер обмена занят другой программой.";
         }
 
-        CopiedText.Text = "Проводник не открылся" +
-                          (string.IsNullOrWhiteSpace(error) ? "." : ": " + error + ".") +
-                          " С отчётом всё в порядке — скопируйте путь кнопкой выше " +
-                          "и вставьте его в адресную строку проводника.";
         CopiedText.Visibility = Visibility.Visible;
     }
 

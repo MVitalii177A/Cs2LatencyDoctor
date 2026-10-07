@@ -1,5 +1,3 @@
-using System.Diagnostics;
-
 namespace Cs2LatencyDoctor.Gui;
 
 /// <summary>
@@ -10,6 +8,11 @@ namespace Cs2LatencyDoctor.Gui;
 /// останется ненайденной, а программа — хуже, чем могла бы быть.
 /// Поэтому кнопка должна быть в самом окне, и нажатие должно сразу открывать
 /// форму, где уже подставлена версия программы.
+///
+/// Открытием ссылок занимается BrowserLauncher: он пробует браузер по умолчанию,
+/// а если тот не отвечает — перебирает установленные. Способ через explorer.exe
+/// отсюда убран: проводник не запускается как дочерний процесс и падает
+/// с ошибкой 0xc0000142, пугая человека сообщением о сбое приложения.
 /// </summary>
 public static class FeedbackLinks
 {
@@ -19,9 +22,9 @@ public static class FeedbackLinks
     /// <summary>Форма нового сообщения об ошибке с уже заполненной версией.</summary>
     public static string NewIssueUrl()
     {
-        // В адресе передаём заголовок и метку: человеку меньше писать, а сообщение
-        // сразу попадает в нужную категорию. Тело не заполняем — шаблон сам
-        // задаст нужные вопросы.
+        // В адресе передаём заголовок, метку и тело: человеку меньше писать,
+        // а сообщение сразу попадает в нужную категорию. Тело заполняем версией
+        // программы — без неё невозможно понять, какая это сборка.
         var title = Uri.EscapeDataString("[Ошибка] ");
         var body = Uri.EscapeDataString(
             "**Версия программы:** " + Core.AppVersion.Display + "\n" +
@@ -40,35 +43,4 @@ public static class FeedbackLinks
 
     /// <summary>Описание программы.</summary>
     public static string ReadmeUrl() => RepositoryUrl + "/blob/main/README.md";
-
-    /// <summary>
-    /// Попытка открыть ссылку. useShell: true — обычный способ через оболочку Windows,
-    /// false — через explorer.exe, который вызывает оболочку по-другому.
-    ///
-    /// Второй способ нужен потому, что первый зависит от браузера по умолчанию:
-    /// если он настроен неправильно, ссылка не откроется вообще.
-    /// </summary>
-    public static bool TryOpen(string url, bool useShell)
-    {
-        try
-        {
-            var info = new ProcessStartInfo
-            {
-                FileName = useShell ? url : "explorer.exe",
-                Arguments = useShell ? string.Empty : url,
-                UseShellExecute = true
-            };
-
-            Process.Start(info);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>Открыть ссылку, попробовав оба способа. Возвращает false, если не вышло.</summary>
-    public static bool Open(string url) =>
-        TryOpen(url, useShell: true) || TryOpen(url, useShell: false);
 }

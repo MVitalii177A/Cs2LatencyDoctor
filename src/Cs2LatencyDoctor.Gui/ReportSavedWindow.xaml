@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Отчёт сохранён"
-        Height="360" Width="640"
-        MinHeight="300" MinWidth="480"
+        Height="420" Width="660"
+        MinHeight="340" MinWidth="500"
         Background="#14151A"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize">
@@ -38,18 +38,23 @@
                 <TextBlock Text="ГДЕ ЛЕЖИТ ФАЙЛ" Foreground="{StaticResource MutedBrush}"
                            FontSize="11" FontWeight="SemiBold" Margin="0,0,0,6"/>
 
-                <DockPanel>
-                    <Button DockPanel.Dock="Right" Content="Скопировать путь"
-                            Padding="12,6" Margin="8,0,0,0"
-                            Click="OnCopyPathClick"
-                            Background="#2A2C34" Foreground="#E6E7EB" BorderThickness="0"/>
+                <TextBox x:Name="PathBox" IsReadOnly="True" Background="#20222A"
+                         Foreground="#C9CBD3" BorderThickness="0" Padding="8,6"
+                         FontSize="12" TextWrapping="Wrap" MaxHeight="56"
+                         VerticalScrollBarVisibility="Auto"
+                         GotFocus="OnPathBoxGotFocus"/>
 
-                    <TextBox x:Name="PathBox" IsReadOnly="True" Background="#20222A"
-                             Foreground="#C9CBD3" BorderThickness="0" Padding="8,6"
-                             FontSize="12" TextWrapping="Wrap" MaxHeight="60"
-                             VerticalScrollBarVisibility="Auto"
-                             GotFocus="OnPathBoxGotFocus"/>
-                </DockPanel>
+                <TextBlock x:Name="FolderText" Foreground="#8B8D98" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,8,0,0"/>
+
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                    <Button Content="Скопировать путь к файлу" Padding="12,6"
+                            Click="OnCopyPathClick"
+                            Background="#2EA043" Foreground="White" BorderThickness="0"/>
+                    <Button Content="Скопировать путь к папке" Padding="12,6" Margin="8,0,0,0"
+                            Click="OnCopyFolderClick"
+                            Background="#2A2C34" Foreground="#E6E7EB" BorderThickness="0"/>
+                </StackPanel>
 
                 <TextBlock x:Name="CopiedText" Foreground="#30A46C" FontSize="11"
                            TextWrapping="Wrap" Margin="0,8,0,0"
@@ -65,16 +70,17 @@
             </ScrollViewer>
         </Border>
 
+        <!--
+          Объяснение, почему нет кнопки «открыть папку». Без него человек ищет
+          её, не находит и решает, что программа чего-то не умеет.
+        -->
         <TextBlock Grid.Row="3" TextWrapping="Wrap" Foreground="#6E6E77" FontSize="11"
                    Margin="0,12,0,0"
-                   Text="Чтобы найти файл самим: откройте папку с программой, затем папку «отчёты». Или скопируйте путь кнопкой выше и вставьте его в адресную строку проводника."/>
+                   Text="Кнопки «открыть папку» здесь нет намеренно: Windows не разрешает программе запускать проводник — он падает с ошибкой 0xc0000142. Это особенность проводника, а не поломка отчёта. Скопируйте путь и вставьте его в адресную строку проводника — файл откроется."/>
 
         <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right"
                     Margin="0,12,0,0">
-            <Button Content="Открыть папку" Padding="16,8" Click="OnOpenFolderClick"
-                    Background="#2A2C34" Foreground="#E6E7EB" BorderThickness="0"/>
-            <Button Content="Закрыть" Padding="18,8" Margin="8,0,0,0"
-                    Click="OnCloseClick"
+            <Button Content="Закрыть" Padding="18,8" Click="OnCloseClick"
                     Background="#2A2C34" Foreground="#E6E7EB" BorderThickness="0"/>
         </StackPanel>
     </Grid>

@@ -155,44 +155,25 @@ public partial class DonationWindow : Window
     {
         if (!DonationInfo.HasDonationAlerts) return;
 
-        // Открываем двумя способами: если браузер по умолчанию настроен криво
-        // или падает, второй способ обычно срабатывает.
-        var opened = TryOpen(DonationInfo.DonationAlertsUrl, useShell: true);
+        // Открываем через общий запускатель: он пробует браузер по умолчанию,
+        // а если тот не отвечает — перебирает установленные. Способ через
+        // проводник убран: он падает с ошибкой 0xc0000142 и пугает человека
+        // сообщением о сбое приложения.
+        var openedWith = BrowserLauncher.Open(DonationInfo.DonationAlertsUrl);
 
-        if (!opened)
-            opened = TryOpen(DonationInfo.DonationAlertsUrl, useShell: false);
-
-        StatusText.Text = opened
-            ? "Страница открыта в браузере. Если браузер показал сообщение о падении — " +
-              "это его собственная проблема, скопируйте ссылку и откройте вручную."
-            : "Не удалось запустить браузер. Скопируйте ссылку кнопкой рядом " +
-              "и откройте её вручную: " + DonationInfo.DonationAlertsUrl;
+        StatusText.Text = openedWith is not null
+            ? "Страница открыта в браузере: " + openedWith + "."
+            : "Не удалось открыть браузер. Скопируйте ссылку кнопкой рядом " +
+              "и откройте её вручную.";
     }
 
     /// <summary>
     /// Попытка открыть ссылку. useShell: true — обычный способ через оболочку Windows,
     /// false — через explorer.exe, который вызывает оболочку по-другому.
     /// </summary>
-    private static bool TryOpen(string url, bool useShell)
-    {
-        try
-        {
-            var info = new ProcessStartInfo
-            {
-                FileName = useShell ? url : "explorer.exe",
-                UseShellExecute = useShell
-            };
-
-            if (!useShell) info.Arguments = '"' + url + '"';
-
-            Process.Start(info);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
+    // Способ через explorer.exe убран: проводник не запускается как дочерний
+    // процесс и падает с ошибкой 0xc0000142. Вместо него — перебор браузеров
+    // в BrowserLauncher, который работает надёжно.
 
     private void OnCopyLinkClick(object sender, RoutedEventArgs e)
     {
