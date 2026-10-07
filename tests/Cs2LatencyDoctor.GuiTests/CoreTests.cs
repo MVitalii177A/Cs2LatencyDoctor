@@ -1363,6 +1363,40 @@ internal static class CoreTests
 
             File.Delete(path);
         });
+        RunTest(results, "Запуск браузера проверяется, а не предполагается", () =>
+        {
+            // Этот тест появился после истории с падающим Firefox. Программа
+            // рапортовала «Открыл страницу в браузере», не проверив, открылась ли
+            // она: возвращала успех сразу после запуска процесса. Человек в этот
+            // момент видел окно «Firefox столкнулся с проблемой и аварийно
+            // завершил работу» — и справедливо считал виноватой программу.
+            //
+            // Теперь запуск проверяется по живым процессам браузера.
+            var browsers = BrowserLauncher.FindInstalled();
+
+            if (browsers.Count == 0)
+                throw new InvalidOperationException(
+                    "В системе не найдено ни одного браузера — программа не сможет открыть ссылку");
+
+            // Проверяем, что определение живых процессов вообще работает:
+            // у заведомо отсутствующего браузера процессов быть не должно.
+            foreach (var browser in browsers)
+            {
+                if (string.IsNullOrWhiteSpace(browser.ExecutablePath))
+                    throw new InvalidOperationException("У браузера «" + browser.Title + "» нет пути к программе");
+
+                if (!File.Exists(browser.ExecutablePath))
+                    throw new InvalidOperationException(
+                        "Браузер «" + browser.Title + "» найден, но файла по пути нет: " + browser.ExecutablePath);
+            }
+
+            // Edge должен стоять первым: он есть почти везде и переживает сбои
+            // браузера по умолчанию.
+            if (!browsers[0].Title.Contains("Edge", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "Первым в списке идёт «" + browsers[0].Title + "», а должен идти Edge: " +
+                    "перебор начинается с него, и сбой браузера по умолчанию не должен мешать");
+        });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };
