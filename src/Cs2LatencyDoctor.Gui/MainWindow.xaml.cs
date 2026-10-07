@@ -154,19 +154,15 @@ public partial class MainWindow : Window
 
             _viewModel.ExportReport(path, kind);
 
-            // Для подробного отчёта показываем, что в него попало и чего в нём нет:
-            // человек отдаёт файл добровольно и должен понимать, что именно отдаёт.
-            var text = "Отчёт сохранён:" + Environment.NewLine + path +
-                       Environment.NewLine + Environment.NewLine +
-                       (kind == ReportKind.Developer
-                           ? DeveloperReport.DescribeContents() + Environment.NewLine + Environment.NewLine
-                           : string.Empty) +
-                       "Показать файл в папке?";
+            // Показываем окно с путём, а не просто сообщение: путь нужно уметь
+            // скопировать. Проводник на части машин не запускается из программы,
+            // и копирование пути — единственный способ, который работает всегда.
+            //
+            // Для подробного отчёта добавляем описание: человек отдаёт файл
+            // добровольно и должен понимать, что именно отдаёт.
+            var extra = kind == ReportKind.Developer ? DeveloperReport.DescribeContents() : null;
 
-            var answer = MessageBox.Show(text, "Отчёт сохранён",
-                MessageBoxButton.YesNo, MessageBoxImage.Information);
-
-            if (answer == MessageBoxResult.Yes) OpenReportsFolder();
+            new ReportSavedWindow(path, extra) { Owner = this }.ShowDialog();
         }
         catch (Exception ex)
         {
@@ -198,41 +194,6 @@ public partial class MainWindow : Window
             "Формат JSON", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
         return answer == MessageBoxResult.Yes;
-    }
-
-    /// <summary>
-    /// Открыть папку с отчётами в проводнике и показать файл.
-    /// Проводник надёжнее браузера: он есть всегда и не зависит от настроек.
-    /// </summary>
-    private void OpenReportsFolder()
-    {
-        try
-        {
-            var directory = ReportExporter.ReportsDirectory;
-
-            if (!Directory.Exists(directory))
-            {
-                MessageBox.Show("Папка с отчётами не найдена: " + directory,
-                    "Отчёты", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = "\"" + directory + "\"",
-                UseShellExecute = true
-            });
-        }
-        catch (Exception ex)
-        {
-            App.WriteError("Открытие папки с отчётами", ex);
-
-            MessageBox.Show(
-                "Не удалось открыть папку." + Environment.NewLine + Environment.NewLine +
-                "Откройте её вручную:" + Environment.NewLine + ReportExporter.ReportsDirectory,
-                "Отчёты", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
     }
 
     /// <summary>
