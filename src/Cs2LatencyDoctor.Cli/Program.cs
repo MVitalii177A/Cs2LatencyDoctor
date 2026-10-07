@@ -6,6 +6,7 @@ using Cs2LatencyDoctor.Core.Checks;
 using Cs2LatencyDoctor.Core.Fixes;
 using Cs2LatencyDoctor.Core.History;
 using Cs2LatencyDoctor.Core.Report;
+using Cs2LatencyDoctor.Core.Windows;
 
 // Регистрируем старые кодировки: нужны для чтения вывода ping.exe и powercfg.
 AppBootstrap.Initialize();
@@ -41,6 +42,7 @@ var showPauseList = false;
 var clearHistory = false;
 var revertOneNumber = 0;
 string? exportPath = null;
+string? devReportPath = null;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -64,6 +66,10 @@ for (var i = 0; i < args.Length; i++)
             break;
         case "--revert":
             doRevert = true;
+            break;
+        case "--developer-report" when i + 1 < args.Length:
+            devReportPath = args[i + 1];
+            i++;
             break;
         case "--journal":
             showJournal = true;
@@ -102,6 +108,15 @@ for (var i = 0; i < args.Length; i++)
             showHelp = true;
             break;
     }
+}
+
+// ------------------------------------------------- отчёт для разработчика
+// Тот же код, что и кнопка в окне. Нужен, чтобы проверить сохранение там,
+// где окно запустить нельзя: в собранной для скачивания версии.
+// Стоит первым: диагностику запускать не нужно, отчёт собирается из сведений о системе.
+if (devReportPath is not null)
+{
+    return DeveloperReportCommand.Run(devReportPath);
 }
 
 // ------------------------------------------------------------- самопроверка
@@ -1204,4 +1219,82 @@ internal static class SelfTestCommand
         Console.WriteLine();
         return allOk ? 0 : 1;
     }
+}
+
+/// <summary>
+/// Отчёт для разработчика из консоли. Тот же состав, что и у кнопки в окне.
+///
+/// Зачем отдельная команда. Кнопку в окне проверить автоматически трудно,
+/// а сохранение отчёта уже один раз ломалось в собранной версии: библиотека
+/// лежала в подпапке, которая не попадала в архив, и обе кнопки не работали
+/// ни у кого. Команда вызывает тот же код чтения сведений о системе, поэтому
+/// её можно запустить на собранной версии и увидеть ошибку сразу.
+/// </summary>
+internal static class DeveloperReportCommand
+{
+    public static int Run(string path)
+    {
+        try
+        {
+            var system = SystemFingerprintReader.Read();
+
+            var payload = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                about = new
+                {
+                    what = "Отчёт Cs2LatencyDoctor для разработчика",
+                    privacy = "Имени компьютера и ваших личных путей здесь нет.",
+                    howToSend = "Приложите этот файл к сообщению: " + FeedbackLinksUrl
+                },
+                program = new
+                {
+                    version = AppVersion.Full,
+                    shortVersion = AppVersion.Short,
+                    buildDate = AppVersion.BuildDate
+                },
+                system = new
+                {
+                    windows = system.ShortLine,
+                    architecture = system.Architecture,
+                    motherboard = system.Motherboard,
+                    bios = system.BiosVersion,
+                    cpu = system.Cpu,
+                    gpu = system.Gpu,
+                    gpuDriver = system.GpuDriver,
+                    memory = system.MemoryTotal,
+                    memorySpeed = system.MemorySpeed
+                }
+            }, new System.Text.Json.JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            });
+
+            var full = Path.GetFullPath(path);
+            File.WriteAllText(full, payload, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+            Console.WriteLine();
+            Console.WriteLine("  ОТЧЁТ ДЛЯ РАЗРАБОТЧИКА");
+            Console.WriteLine("  " + new string('-', 70));
+            Console.WriteLine("  Сохранён: " + full);
+
+            foreach (var (label, value) in system.ToLines())
+                Console.WriteLine($"    {label}: {value}");
+
+            Console.WriteLine();
+            Console.WriteLine("  Отправьте этот файл автору: " + FeedbackLinksUrl);
+            Console.WriteLine("  Программа его никуда не отправляла — вы отправите сами.");
+            Console.WriteLine();
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("  Не удалось собрать отчёт: " + ex.Message);
+            return 4;
+        }
+    }
+
+    private const string FeedbackLinksUrl =
+        "https://github.com/MVitalii177A/Cs2LatencyDoctor/issues/new";
 }

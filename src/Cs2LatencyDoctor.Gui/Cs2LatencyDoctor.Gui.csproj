@@ -12,13 +12,35 @@
     <!-- Иконка приложения: попадает и в exe, и в ярлык, и в панель задач. -->
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <RootNamespace>Cs2LatencyDoctor.Gui</RootNamespace>
-    <Version>1.2.0</Version>
-    <FileVersion>1.2.0.0</FileVersion>
-    <InformationalVersion>1.2.0</InformationalVersion>
+    <Version>1.2.1</Version>
+    <FileVersion>1.2.1.0</FileVersion>
+    <InformationalVersion>1.2.1</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Cs2LatencyDoctor.Core\Cs2LatencyDoctor.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      System.Management кладём ПРЯМО В КОРЕНЬ сборки, а не в подпапку runtimes.
+
+      Зачем это здесь. По умолчанию пакет раскидывает библиотеку по папке
+      runtimes\win\lib, и в файле deps.json записывается именно этот путь.
+      Если при сборке пакета для скачивания скопировать только файлы из корня —
+      а так делают почти все, кто собирает архив руками, — папка runtimes
+      не попадёт в архив. Программа запустится, но при первом обращении
+      к библиотеке упадёт с «Could not load file or assembly System.Management».
+
+      Именно это и случилось: кнопки «Сохранить отчёт» и «Отчёт разработчику»
+      не работали ни у одного человека, скачавшего архив, и ошибка вылезала
+      только при нажатии.
+
+      С ExcludeAssets="runtime" библиотека берётся из папки lib и попадает
+      в корень. Путь в deps.json становится обычным, и папка runtimes
+      больше не нужна.
+    -->
+    <PackageReference Include="System.Management" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup>

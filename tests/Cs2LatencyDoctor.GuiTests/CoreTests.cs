@@ -1109,6 +1109,120 @@ internal static class CoreTests
                 throw new InvalidOperationException(
                     "Один и тот же браузер попал в список дважды: " + duplicates[0].Key);
         });
+        RunTest(results, "Обе кнопки сохранения ДЕЙСТВИТЕЛЬНО создают файл", () =>
+        {
+            // Этот тест появился после серьёзной ошибки: кнопки «Сохранить отчёт»
+            // и «Отчёт разработчику» в собранной для скачивания версии не работали
+            // вообще. Падало с «Could not load file or assembly System.Management»,
+            // потому что библиотека лежала в подпапке runtimes, а папка не попадала
+            // в архив. Прежние тесты этого не ловили: они проверяли, что отчёт
+            // собирается, но не проверяли, что он СОХРАНЯЕТСЯ.
+            //
+            // Поэтому здесь всё по-настоящему: создаём отчёт, сохраняем оба файла
+            // и убеждаемся, что они есть и не пустые.
+            var directory = Path.Combine(Directory.GetCurrentDirectory(),
+                "test-export-" + Guid.NewGuid().ToString("N")[..8]);
+
+            Directory.CreateDirectory(directory);
+
+            try
+            {
+                // Настоящий отчёт с настоящей проверкой: так вызывается вся цепочка
+                // чтения сведений о системе, где и падала загрузка сборки.
+                var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 4 };
+                var report = DiagnosticRunner.CreateDefault(4).RunAsync(context, CancellationToken.None)
+                    .GetAwaiter().GetResult();
+
+                var textPath = Path.Combine(directory, "обычный.txt");
+                var jsonPath = Path.Combine(directory, "обычный.json");
+                var devPath = Path.Combine(directory, "разработчику.json");
+
+                // 1. Обычный отчёт: текст.
+                var text = ReportExporter.SaveText(report, textPath);
+                if (!File.Exists(textPath) || text.SizeBytes <= 0)
+                    throw new InvalidOperationException("«Сохранить отчёт» (текст) не создал файл");
+
+                // 2. Обычный отчёт: JSON.
+                var json = ReportExporter.SaveJson(report, jsonPath);
+                if (!File.Exists(jsonPath) || json.SizeBytes <= 0)
+                    throw new InvalidOperationException("«Сохранить отчёт» (JSON) не создал файл");
+
+                // 3. Отчёт разработчику.
+                var saved = DeveloperReport.Save(devPath, report, report.Results, null, out var error);
+
+                if (saved is null || !File.Exists(devPath))
+                    throw new InvalidOperationException(
+                        "«Отчёт разработчику» не создал файл: " + (error ?? "причина неизвестна"));
+
+                if (new FileInfo(devPath).Length <= 0)
+                    throw new InvalidOperationException("«Отчёт разработчику» создал пустой файл");
+
+                // Содержимое тоже проверяем: файл должен быть читаемым и полным.
+                var devContent = File.ReadAllText(devPath);
+
+                foreach (var expected in new[] { "system", "findings", "about", "program" })
+                {
+                    if (!devContent.Contains(expected, StringComparison.Ordinal))
+                        throw new InvalidOperationException($"В отчёте разработчику нет раздела «{expected}»");
+                }
+
+                if (!devContent.Contains(AppVersion.Short, StringComparison.Ordinal))
+                    throw new InvalidOperationException("В отчёте разработчику нет версии программы");
+
+                // Сведения о железе должны быть: без них отчёт бесполезен.
+                if (!devContent.Contains("motherboard", StringComparison.Ordinal))
+                    throw new InvalidOperationException("В отчёте разработчику нет сведений о плате");
+            }
+            finally
+            {
+                try { Directory.Delete(directory, recursive: true); } catch { /* не критично */ }
+            }
+        });
+        RunTest(results, "Библиотека System.Management находится там, где её ищет программа", () =>
+        {
+            // Этот тест появился после самой дорогой ошибки за всё время: в собранной
+            // для скачивания версии обе кнопки сохранения отчёта не работали вообще.
+            // Падало с «Could not load file or assembly System.Management», потому что
+            // библиотека лежала в подпапке runtimes, а папка не попадала в архив:
+            // сборщик архива копировал только файлы из корня.
+            //
+            // Проверяем правило, из-за которого это случилось: если в deps.json записан
+            // путь к подпапке, эта подпапка обязана существовать рядом с программой.
+            var directory = AppContext.BaseDirectory;
+            var deps = Path.Combine(directory, "Cs2LatencyDoctor.Gui.deps.json");
+
+            if (!File.Exists(deps))
+            {
+                // Консольная сборка: проверять нечего.
+                return;
+            }
+
+            var content = File.ReadAllText(deps);
+
+            // Ищем пути вида runtimes/.../System.Management.dll
+            var matches = System.Text.RegularExpressions.Regex.Matches(
+                content, @"runtimes/[^""]*System\.Management\.dll");
+
+            foreach (System.Text.RegularExpressions.Match match in matches)
+            {
+                var relative = match.Value.Replace('/', Path.DirectorySeparatorChar);
+                var expected = Path.Combine(directory, relative);
+
+                if (!File.Exists(expected))
+                    throw new InvalidOperationException(
+                        "В deps.json записан путь «" + match.Value + "», но файла по нему нет. " +
+                        "Значит, при сборке архива папка runtimes не скопирована — " +
+                        "и у человека, скачавшего программу, отчёты не сохранятся.");
+
+                return;
+            }
+
+            // Путей к подпапкам нет: библиотека должна лежать в корне.
+            if (!File.Exists(Path.Combine(directory, "System.Management.dll")))
+                throw new InvalidOperationException(
+                    "Библиотеки System.Management нет ни в корне, ни в подпапке — " +
+                    "программа упадёт при первом обращении к сведениям о системе.");
+        });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };
