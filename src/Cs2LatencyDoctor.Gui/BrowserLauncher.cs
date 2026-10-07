@@ -166,8 +166,10 @@ public static class BrowserLauncher
 
         try
         {
-            // Даём браузеру время на старт.
-            if (!process.WaitForExit(1200)) return true;
+            // Даём браузеру время на старт. Две с половиной секунды, а не меньше:
+            // Firefox запускает отдельный процесс и завершается сам — при коротком
+            // ожидании это выглядит как падение, хотя браузер открылся.
+            if (!process.WaitForExit(2500)) return true;
 
             // Процесс завершился. Это может быть и нормально: если браузер уже
             // открыт, новый запуск просто передаёт ссылку ему и выходит.
@@ -232,8 +234,15 @@ public static class BrowserLauncher
     /// true — не пробовать обычный способ вообще. Нужно, когда человек уже знает,
     /// что браузер по умолчанию не работает, и выбрал конкретный.
     /// </param>
-    public static string? Open(string url, bool skipShell = false)
+    /// <param name="only">
+    /// Открыть только этим браузером, не перебирая остальные. Нужно, когда браузер
+    /// выбрал сам человек: иначе его выбор ничего не значил бы.
+    /// </param>
+    public static string? Open(string url, bool skipShell = false, InstalledBrowser? only = null)
     {
+        if (only is not null)
+            return OpenWith(only, url) ? only.Title : null;
+
         foreach (var browser in FindInstalled())
         {
             if (OpenWith(browser, url)) return browser.Title;

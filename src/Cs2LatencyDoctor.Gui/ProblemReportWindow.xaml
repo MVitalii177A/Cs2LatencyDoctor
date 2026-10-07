@@ -1,0 +1,81 @@
+<Window x:Class="Cs2LatencyDoctor.Gui.ProblemReportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Сообщить о проблеме"
+        Height="470" Width="660"
+        MinHeight="380" MinWidth="500"
+        Background="#14151A"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="PanelBrush" Color="#1C1D23"/>
+        <SolidColorBrush x:Key="MutedBrush" Color="#8B8D98"/>
+    </Window.Resources>
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Заголовок -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+            <TextBlock Text="Сообщить о проблеме" Foreground="#E6E7EB"
+                       FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"
+                       FontSize="12" Margin="0,6,0,0"
+                       Text="Страница открывается на GitHub. Версию программы я подставил за вас — останется описать, что случилось."/>
+        </StackPanel>
+
+        <!-- Ссылка: главное, что нужно человеку -->
+        <Border Grid.Row="1" Background="{StaticResource PanelBrush}" CornerRadius="8"
+                Padding="12" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="ССЫЛКА" Foreground="{StaticResource MutedBrush}"
+                           FontSize="11" FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                <TextBox x:Name="UrlBox" IsReadOnly="True" Background="#20222A"
+                         Foreground="#C9CBD3" BorderThickness="0" Padding="8,6"
+                         FontSize="12" TextWrapping="Wrap" MaxHeight="56"
+                         VerticalScrollBarVisibility="Auto"
+                         GotFocus="OnUrlBoxGotFocus"/>
+
+                <Button Content="Скопировать ссылку" Padding="14,7" Margin="0,10,0,0"
+                        HorizontalAlignment="Left"
+                        Click="OnCopyClick"
+                        Background="#2EA043" Foreground="White" BorderThickness="0"/>
+
+                <TextBlock x:Name="CopiedText" Foreground="#30A46C" FontSize="11"
+                           TextWrapping="Wrap" Margin="0,8,0,0"
+                           Visibility="Collapsed"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Результат попытки открыть: говорим только то, что знаем -->
+        <TextBlock x:Name="OpenResult" Grid.Row="2" TextWrapping="Wrap" FontSize="11"
+                   Foreground="#8B8D98" Margin="0,0,0,12" Visibility="Collapsed"/>
+
+        <!-- Выбор браузера вручную -->
+        <Border x:Name="BrowserPanel" Grid.Row="3" Background="{StaticResource PanelBrush}"
+                CornerRadius="8" Padding="12">
+            <StackPanel>
+                <TextBlock Text="ОТКРЫТЬ В БРАУЗЕРЕ" Foreground="{StaticResource MutedBrush}"
+                           FontSize="11" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                <WrapPanel x:Name="BrowserButtons"/>
+                <TextBlock TextWrapping="Wrap" Foreground="#6E6E77" FontSize="11"
+                           Margin="0,4,0,0"
+                           Text="Если браузер не открывается из программы — это его особенность, а не поломка отчёта. Ссылка выше работает всегда: скопируйте её и вставьте в браузер."/>
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right"
+                    Margin="0,12,0,0">
+            <Button Content="Закрыть" Padding="18,8" Click="OnCloseClick"
+                    Background="#2A2C34" Foreground="#E6E7EB" BorderThickness="0"/>
+        </StackPanel>
+    </Grid>
+</Window>

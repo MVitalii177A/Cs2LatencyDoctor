@@ -211,59 +211,16 @@ public partial class MainWindow : Window
         try { System.Windows.Clipboard.SetText(url); }
         catch { /* буфер обмена может быть занят другой программой */ }
 
-        // Пробуем открыть обычным способом, а если не вышло — перебираем браузеры.
-        // У первого пользователя браузер по умолчанию падал на любой ссылке,
-        // поэтому «просто открыть» здесь недостаточно.
+        // Пробуем открыть браузер. Результат проверяем по живым процессам, но
+        // верить этой проверке до конца нельзя: поведение браузеров при запуске
+        // из программы нестабильно — один и тот же браузер запускается то успешно,
+        // то падает, в зависимости от того, открыт он уже или нет.
+        //
+        // Поэтому главное здесь не открыть ссылку любой ценой, а оставить человеку
+        // рабочий путь: ссылка уже в буфере обмена, а окно с ней открывается всегда.
         var openedWith = BrowserLauncher.Open(url);
 
-        if (openedWith is not null)
-        {
-            MessageBox.Show(
-                "Страница должна была открыться: " + openedWith + "." +
-                Environment.NewLine + Environment.NewLine +
-                // Просим проверить глазами: запуск браузера мы видим, а вот открылась
-                // ли страница — нет. Обещать больше, чем знаем, нельзя: человек
-                // поверит и не поймёт, почему перед ним пустой экран.
-                "Если окно браузера не появилось или браузер сообщил об ошибке — " +
-                "это его собственная проблема, а не отчёта." +
-                Environment.NewLine + Environment.NewLine +
-                "Чтобы разобраться быстро:" + Environment.NewLine +
-                "  1. Опишите, что случилось и что вы делали." + Environment.NewLine +
-                "  2. Приложите файл отчёта, если сохранили его кнопкой «Сохранить отчёт»." +
-                Environment.NewLine + Environment.NewLine +
-                "Версию программы я подставил за вас." + Environment.NewLine +
-                "Ссылка скопирована в буфер обмена — вставьте её в браузер вручную, " +
-                "если страница не открылась.",
-                "Сообщить о проблеме", MessageBoxButton.OK, MessageBoxImage.Information);
-
-            return;
-        }
-
-        // Не открылось ничего: даём выбрать браузер вручную.
-        OfferBrowserChoice(url);
-    }
-
-    /// <summary>
-    /// Открыть ссылку в выбранном вручную браузере. Нужно, когда браузер
-    /// по умолчанию не работает, а остальные программа не смогла запустить сама.
-    /// </summary>
-    private void OfferBrowserChoice(string url)
-    {
-        var browsers = BrowserLauncher.FindInstalled();
-
-        if (browsers.Count == 0)
-        {
-            MessageBox.Show(
-                "Не удалось открыть браузер: в системе не найдено ни одного." +
-                Environment.NewLine + Environment.NewLine +
-                "Ссылка скопирована в буфер обмена. Вставьте её в адресную строку " +
-                "любого браузера:" + Environment.NewLine + Environment.NewLine + url,
-                "Сообщить о проблеме", MessageBoxButton.OK, MessageBoxImage.Information);
-
-            return;
-        }
-
-        var window = new BrowserChoiceWindow(url, browsers) { Owner = this };
+        var window = new ProblemReportWindow(url, openedWith) { Owner = this };
         window.ShowDialog();
     }
 
