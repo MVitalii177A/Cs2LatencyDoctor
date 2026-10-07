@@ -43,6 +43,7 @@ var clearHistory = false;
 var revertOneNumber = 0;
 string? exportPath = null;
 string? devReportPath = null;
+var developerReportRequested = false;
 
 for (var i = 0; i < args.Length; i++)
 {
@@ -67,9 +68,15 @@ for (var i = 0; i < args.Length; i++)
         case "--revert":
             doRevert = true;
             break;
-        case "--developer-report" when i + 1 < args.Length:
-            devReportPath = args[i + 1];
-            i++;
+        case "--developer-report":
+            // Ключ встретился: запоминаем это даже без пути, чтобы не запускать
+            // диагностику молча — иначе человек не поймёт, почему отчёта нет.
+            developerReportRequested = true;
+            if (i + 1 < args.Length && !args[i + 1].StartsWith("-"))
+            {
+                devReportPath = args[i + 1];
+                i++;
+            }
             break;
         case "--journal":
             showJournal = true;
@@ -114,8 +121,17 @@ for (var i = 0; i < args.Length; i++)
 // Тот же код, что и кнопка в окне. Нужен, чтобы проверить сохранение там,
 // где окно запустить нельзя: в собранной для скачивания версии.
 // Стоит первым: диагностику запускать не нужно, отчёт собирается из сведений о системе.
-if (devReportPath is not null)
+if (developerReportRequested)
 {
+    if (devReportPath is null)
+    {
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("  Укажите файл для отчёта. Например:");
+        Console.Error.WriteLine("     cs2latency --developer-report отчёт.json");
+        Console.Error.WriteLine();
+        return 4;
+    }
+
     return DeveloperReportCommand.Run(devReportPath);
 }
 
@@ -185,6 +201,7 @@ if (showHelp)
           cs2latency [--seconds N] [--json]   только диагностика, ничего не меняет
           cs2latency --plan                   что можно исправить (ничего не меняет)
           cs2latency --export FILE            сохранить отчёт: .txt для чтения, .json для обработки
+          cs2latency --developer-report FILE  подробный отчёт: сведения о системе и находки
 
         Исправления (нужны права администратора):
           cs2latency --fix                    применить исправления по найденному

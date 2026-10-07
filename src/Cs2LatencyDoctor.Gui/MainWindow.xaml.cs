@@ -177,11 +177,11 @@ public partial class MainWindow : Window
                 Environment.NewLine + Environment.NewLine +
                 "Чтобы разобраться быстро:" + Environment.NewLine +
                 "  1. Опишите, что случилось и что вы делали." + Environment.NewLine +
-                "  2. Нажмите «Отчёт разработчику» и приложите файл к сообщению." +
+                "  2. Приложите файл отчёта, если сохранили его кнопкой «Сохранить отчёт»." +
                 Environment.NewLine + Environment.NewLine +
                 "Версию программы я подставил за вас." + Environment.NewLine +
                 "Ссылка скопирована в буфер обмена — пригодится, если страница не открылась.",
-                "Что-то не работает?", MessageBoxButton.OK, MessageBoxImage.Information);
+                "Сообщить о проблеме", MessageBoxButton.OK, MessageBoxImage.Information);
 
             return;
         }
@@ -205,7 +205,7 @@ public partial class MainWindow : Window
                 Environment.NewLine + Environment.NewLine +
                 "Ссылка скопирована в буфер обмена. Вставьте её в адресную строку " +
                 "любого браузера:" + Environment.NewLine + Environment.NewLine + url,
-                "Что-то не работает?", MessageBoxButton.OK, MessageBoxImage.Information);
+                "Сообщить о проблеме", MessageBoxButton.OK, MessageBoxImage.Information);
 
             return;
         }
