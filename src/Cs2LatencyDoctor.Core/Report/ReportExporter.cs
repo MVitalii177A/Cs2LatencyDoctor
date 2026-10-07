@@ -88,9 +88,55 @@ public static class ReportExporter
     /// <summary>Куда отправлять отчёт. Держим здесь, чтобы адрес не расходился с окном программы.</summary>
     public const string FeedbackUrl = "https://github.com/MVitalii177A/Cs2LatencyDoctor/issues/new";
 
-    /// <summary>Предлагаемое имя файла: дата и время, чтобы отчёты не перезаписывали друг друга.</summary>
+    /// <summary>
+    /// Папка, куда сохраняются отчёты. Создаётся при первом сохранении.
+    ///
+    /// Почему папка задана заранее, а не выбирается человеком. Раньше здесь было
+    /// системное окно выбора файла, и оно падало: не в нашем коде, а внутри Windows,
+    /// с кодом 0xc0000409 в библиотеке ucrtbase.dll. Такое падение невозможно
+    /// поймать обработчиком исключений — процесс завершается мгновенно, без следа.
+    ///
+    /// Проверено на простейшей программе из тридцати строк: только системное окно
+    /// и ничего больше — падает так же. Значит дело не в нашем коде, а в самом окне,
+    /// и единственный надёжный выход — его не показывать.
+    ///
+    /// Заодно так удобнее: человек не думает, куда сохранить, а файл оказывается
+    /// в предсказуемом месте рядом с программой.
+    /// </summary>
+    public static string ReportsDirectory
+    {
+        get
+        {
+            // Рядом с программой: человек найдёт отчёт там же, где саму программу,
+            // и папка исчезнет вместе с ней, если он удалит программу.
+            var baseDir = AppContext.BaseDirectory;
+
+            return Path.Combine(baseDir, "отчёты");
+        }
+    }
+
+    /// <summary>
+    /// Полный путь для нового отчёта. Имя содержит дату и время, поэтому файлы
+    /// не перезаписывают друг друга, даже если сохранять подряд.
+    /// </summary>
+    public static string SuggestFullPath(DateTimeOffset now, string extension)
+    {
+        var directory = ReportsDirectory;
+        Directory.CreateDirectory(directory);
+
+        return Path.Combine(directory, SuggestFileName(now, extension));
+    }
+
+
+    /// <summary>
+    /// Имя файла: дата и время с точностью до секунды.
+    ///
+    /// Секунды обязательны. С точностью до минуты два отчёта, сохранённые подряд,
+    /// получали одинаковое имя, и второй молча затирал первый — а человек видел
+    /// только «отчёт сохранён» и терял предыдущий.
+    /// </summary>
     public static string SuggestFileName(DateTimeOffset now, string extension) =>
-        $"cs2-latency-{now:yyyy-MM-dd-HH-mm}.{extension}";
+        $"cs2-latency-{now:yyyy-MM-dd-HH-mm-ss}.{extension}";
 
     /// <summary>Сохранить отчёт в текстовом виде: его можно прочитать глазами и переслать в чат.</summary>
     public static ExportedReport SaveText(

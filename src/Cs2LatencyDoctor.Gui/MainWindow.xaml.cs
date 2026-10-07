@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using Cs2LatencyDoctor.Core.Report;
 
@@ -102,52 +103,136 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Сохранить отчёт. Одна кнопка на два случая: раньше их было две, и отчёты
-    /// пересекались — версия, сведения о системе, находки и история попадали в оба
-    /// файла. Разница только в подробностях о состоянии программы, поэтому выбор
-    /// делается здесь, при сохранении, а не двумя кнопками в окне.
+    /// Сохранить отчёт. Отчёт один, а видов записи три — человек выбирает вид,
+    /// а место сохранения задано заранее.
     ///
-    /// Формулировки про человека, а не про того, кто читает: «отправить автору»
-    /// понятнее, чем «для разработчика», и не заставляет гадать, чем файлы различаются.
+    /// Почему нет окна выбора файла. Раньше здесь было системное окно Windows,
+    /// и оно падало: не в нашем коде, а внутри самой системы, с кодом 0xc0000409
+    /// в библиотеке ucrtbase.dll. Такое падение нельзя поймать обработчиком
+    /// исключений — процесс завершается мгновенно, и человек видит только
+    /// исчезнувшее окно.
+    ///
+    /// Проверено на простейшей программе из тридцати строк: только системное окно
+    /// и ничего больше — падает так же. Значит дело в самом окне, и единственный
+    /// надёжный выход — его не показывать.
+    ///
+    /// Заодно так удобнее: не надо думать, куда сохранить, а файл оказывается
+    /// в предсказуемом месте — в папке «отчёты» рядом с программой.
     /// </summary>
     private void OnExportClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new Microsoft.Win32.SaveFileDialog
+        try
         {
-            Title = "Сохранить отчёт о проверке",
-            FileName = ReportExporter.SuggestFileName(DateTimeOffset.Now, "txt"),
-            DefaultExt = ".txt",
-            Filter =
-                "Отчёт для отправки автору — подробный (*.txt)|*.txt|" +
-                "Отчёт для чтения и письма (*.txt)|*.txt|" +
-                "Данные в формате JSON — для обработки (*.json)|*.json",
-            FilterIndex = 2,
-            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-            AddExtension = true
-        };
+            var now = DateTimeOffset.Now;
 
-        if (dialog.ShowDialog(this) != true) return;
+            // Спрашиваем вид отчёта обычным окном сообщения: оно системное,
+            // но простое и падать ему не с чего.
+            var choice = MessageBox.Show(
+                "Какой отчёт сохранить?" + Environment.NewLine + Environment.NewLine +
+                "«Да» — подробный, для отправки автору: всё нужное для разбора проблемы," +
+                Environment.NewLine + "          включая состояние программы." + Environment.NewLine +
+                "«Нет» — читаемый текст для письма или форума." + Environment.NewLine +
+                "«Отмена» — данные в формате JSON, для обработки скриптом." +
+                Environment.NewLine + Environment.NewLine +
+                "Файл сохранится в папку «отчёты» рядом с программой." +
+                Environment.NewLine +
+                "Программа никуда его не отправляет — отправите сами, если захотите.",
+                "Сохранить отчёт",
+                MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
 
-        var kind = dialog.FilterIndex switch
+            if (choice == MessageBoxResult.Cancel && !ConfirmJson()) return;
+
+            var kind = choice switch
+            {
+                MessageBoxResult.Yes => ReportKind.Developer,
+                MessageBoxResult.No => ReportKind.Readable,
+                _ => ReportKind.Json
+            };
+
+            var extension = kind == ReportKind.Readable ? "txt" : "json";
+            var path = ReportExporter.SuggestFullPath(now, extension);
+
+            _viewModel.ExportReport(path, kind);
+
+            // Для подробного отчёта показываем, что в него попало и чего в нём нет:
+            // человек отдаёт файл добровольно и должен понимать, что именно отдаёт.
+            var text = "Отчёт сохранён:" + Environment.NewLine + path +
+                       Environment.NewLine + Environment.NewLine +
+                       (kind == ReportKind.Developer
+                           ? DeveloperReport.DescribeContents() + Environment.NewLine + Environment.NewLine
+                           : string.Empty) +
+                       "Показать файл в папке?";
+
+            var answer = MessageBox.Show(text, "Отчёт сохранён",
+                MessageBoxButton.YesNo, MessageBoxImage.Information);
+
+            if (answer == MessageBoxResult.Yes) OpenReportsFolder();
+        }
+        catch (Exception ex)
         {
-            1 => ReportKind.Developer,
-            3 => ReportKind.Json,
-            _ => ReportKind.Readable
-        };
+            // Этот обработчик был единственным без защиты, и при сбое программа
+            // закрывалась молча — человек видел только исчезнувшее окно.
+            App.WriteError("Сохранение отчёта", ex);
 
-        _viewModel.ExportReport(dialog.FileName, kind);
+            MessageBox.Show(
+                "Не удалось сохранить отчёт." + Environment.NewLine + Environment.NewLine +
+                ex.GetType().Name + ": " + ex.Message + Environment.NewLine + Environment.NewLine +
+                "Подробности записаны в файл:" + Environment.NewLine + App.ErrorLogPath +
+                Environment.NewLine + Environment.NewLine +
+                "Покажите этот файл автору — по нему видно причину.",
+                "Ошибка сохранения", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
 
-        // Для подробного отчёта показываем, что в него попало и чего в нём нет:
-        // человек отдаёт файл добровольно и должен понимать, что именно отдаёт.
-        if (kind != ReportKind.Developer) return;
-
+    /// <summary>
+    /// Уточнение перед сохранением JSON: «Отмена» в вопросе выбора означает именно
+    /// этот формат, и человеку стоит подтвердить, что он понял правильно.
+    /// </summary>
+    private bool ConfirmJson()
+    {
         var answer = MessageBox.Show(
-            "Подробный отчёт сохранён." + Environment.NewLine + Environment.NewLine +
-            DeveloperReport.DescribeContents() + Environment.NewLine + Environment.NewLine +
-            "Отправить его автору сейчас? Откроется страница, где нужно приложить файл.",
-            "Отчёт сохранён", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            "Сохранить данные в формате JSON?" + Environment.NewLine + Environment.NewLine +
+            "Такой файл нужен для обработки программой, а не для чтения глазами." +
+            Environment.NewLine +
+            "Если вы хотите отправить отчёт автору — выберите «Да» в прошлом окне.",
+            "Формат JSON", MessageBoxButton.YesNo, MessageBoxImage.Question);
 
-        if (answer == MessageBoxResult.Yes) OnReportProblemClick(sender, e);
+        return answer == MessageBoxResult.Yes;
+    }
+
+    /// <summary>
+    /// Открыть папку с отчётами в проводнике и показать файл.
+    /// Проводник надёжнее браузера: он есть всегда и не зависит от настроек.
+    /// </summary>
+    private void OpenReportsFolder()
+    {
+        try
+        {
+            var directory = ReportExporter.ReportsDirectory;
+
+            if (!Directory.Exists(directory))
+            {
+                MessageBox.Show("Папка с отчётами не найдена: " + directory,
+                    "Отчёты", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = "\"" + directory + "\"",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            App.WriteError("Открытие папки с отчётами", ex);
+
+            MessageBox.Show(
+                "Не удалось открыть папку." + Environment.NewLine + Environment.NewLine +
+                "Откройте её вручную:" + Environment.NewLine + ReportExporter.ReportsDirectory,
+                "Отчёты", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
     }
 
     /// <summary>

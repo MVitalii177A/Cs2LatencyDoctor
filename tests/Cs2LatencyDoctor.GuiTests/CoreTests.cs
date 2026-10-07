@@ -1320,6 +1320,49 @@ internal static class CoreTests
             }
         });
 
+        RunTest(results, "Отчёт сохраняется в готовую папку без окна выбора файла", () =>
+        {
+            // Этот тест появился после падения программы при нажатии «Сохранить отчёт».
+            // Причина оказалась не в нашем коде: падало системное окно выбора файла,
+            // изнутри Windows, с кодом 0xc0000409. Такое падение нельзя поймать
+            // обработчиком исключений — процесс завершается мгновенно.
+            //
+            // Поэтому окна больше нет: папка задана заранее. Тест проверяет, что путь
+            // создаётся и файл по нему действительно записывается.
+            var path = ReportExporter.SuggestFullPath(DateTimeOffset.Now, "txt");
+
+            if (string.IsNullOrWhiteSpace(path))
+                throw new InvalidOperationException("Путь для отчёта не сформирован");
+
+            var directory = Path.GetDirectoryName(path);
+
+            if (directory is null || !Directory.Exists(directory))
+                throw new InvalidOperationException(
+                    "Папка для отчётов не создана: " + (directory ?? "путь пуст"));
+
+            if (!path.EndsWith(".txt", StringComparison.Ordinal))
+                throw new InvalidOperationException("Путь не оканчивается нужным расширением: " + path);
+
+            // Имя должно содержать дату: иначе отчёты перезапишут друг друга.
+            var name = Path.GetFileName(path);
+
+            if (!System.Text.RegularExpressions.Regex.IsMatch(name, @"\d{4}-\d{2}-\d{2}"))
+                throw new InvalidOperationException("В имени файла нет даты: " + name);
+
+            // Два отчёта подряд не должны получить одинаковое имя.
+            var second = ReportExporter.SuggestFullPath(DateTimeOffset.Now.AddSeconds(1), "txt");
+
+            if (second == path)
+                throw new InvalidOperationException("Два отчёта получили одинаковое имя — перезапишут друг друга");
+
+            // И проверяем, что по этому пути файл реально записывается.
+            File.WriteAllText(path, "проверка");
+
+            if (!File.Exists(path) || new FileInfo(path).Length == 0)
+                throw new InvalidOperationException("Файл по подготовленному пути не записался");
+
+            File.Delete(path);
+        });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };
