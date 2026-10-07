@@ -396,6 +396,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
                 OnPropertyChanged(nameof(HasManualFixes));
                 OnPropertyChanged(nameof(HasJournal));
+
+                // Подпись о том, сколько можно исправить, зависит от списка находок:
+                // её надо обновить вместе с ним, иначе она покажет старые числа.
+                OnPropertyChanged(nameof(FixableHint));
+                OnPropertyChanged(nameof(HasFixableHint));
             });
 
             Summary = report.Summary;
@@ -462,6 +467,34 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     /// <summary>Сколько находок отмечено к исправлению. Для текста на кнопке.</summary>
     public int SelectedForApplyCount => Findings.Count(f => f.CanApply && f.ApplySelected);
+
+    /// <summary>
+    /// Сколько находок программа может исправить по кнопке прямо сейчас.
+    ///
+    /// Это заменило подпись «Галочка — что исправлять по кнопке». Подпись объясняла
+    /// очевидное: галочка и так стоит только там, где есть что исправлять, а рядом
+    /// с ней написано, что она делает. Пользы в ней не было.
+    ///
+    /// Число полезнее: сразу видно, сколько можно исправить, не пересчитывая
+    /// галочки глазами. Если исправлять нечего — подписи нет вовсе, и это тоже
+    /// понятно без слов.
+    /// </summary>
+    public string FixableHint
+    {
+        get
+        {
+            var count = Findings.Count(f => f.CanApply);
+
+            if (count == 0) return string.Empty;
+
+            return count == 1
+                ? "Одну находку можно исправить по кнопке — галочка уже стоит."
+                : $"Можно исправить по кнопке: {count}. Галочки уже стоят.";
+        }
+    }
+
+    /// <summary>Показывать ли подпись о том, сколько можно исправить.</summary>
+    public bool HasFixableHint => Findings.Any(f => f.CanApply);
 
     /// <summary>
     /// Сохранить отчёт. Одна кнопка на три случая, потому что отчёт один:

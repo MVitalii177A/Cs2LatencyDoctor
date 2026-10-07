@@ -169,13 +169,23 @@
             <Border Grid.Column="0" Style="{StaticResource Panel}">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                            <TextBlock Text="НАХОДКИ" Style="{StaticResource SectionTitle}" Margin="0"/>
-                            <TextBlock Text="Галочка — что исправлять по кнопке" Foreground="#6E6E77"
-                                       FontSize="11" VerticalAlignment="Center" Margin="10,0,0,2"/>
-                        </StackPanel>
+                        <TextBlock Text="НАХОДКИ" Style="{StaticResource SectionTitle}" Margin="0"/>
+
+                        <!--
+                          Сколько находок можно исправить по кнопке.
+
+                          Здесь была подпись «Галочка — что исправлять по кнопке».
+                          Она объясняла очевидное: галочка и так стоит только там,
+                          где есть что исправлять, и сама подсказывает себя наведением.
+                          Число полезнее — видно, сколько всего можно поправить.
+                          Когда исправлять нечего, строки нет вовсе.
+                        -->
+                        <TextBlock Text="{Binding FixableHint}" Foreground="#4C8DFF"
+                                   FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"
+                                   Visibility="{Binding HasFixableHint, Converter={StaticResource BoolToVisibility}}"/>
+
                         <TextBlock Text="{Binding Summary}" Foreground="{StaticResource MutedBrush}"
-                                   FontSize="12" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                   FontSize="12" Margin="0,4,0,10" TextWrapping="Wrap"/>
                     </StackPanel>
 
                     <ScrollViewer VerticalScrollBarVisibility="Auto">

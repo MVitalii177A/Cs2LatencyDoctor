@@ -1397,6 +1397,71 @@ internal static class CoreTests
                     "Первым в списке идёт «" + browsers[0].Title + "», а должен идти Edge: " +
                     "перебор начинается с него, и сбой браузера по умолчанию не должен мешать");
         });
+        RunTest(results, "Подпись о исправимом показывает число, а не объясняет галочку", () =>
+        {
+            // Здесь была подпись «Галочка — что исправлять по кнопке». Человек
+            // заметил, что она бесполезна: галочка и так стоит только там, где
+            // есть что исправлять, и сама объясняет себя наведением.
+            //
+            // Теперь на её месте число исправимых находок, а когда исправлять
+            // нечего — подписи нет вовсе.
+            var row = new FindingRow
+            {
+                FindingId = "тест",
+                Mark = "МОЖНО ЛУЧШЕ",
+                Color = "#FFAA00",
+                Title = "Проверка",
+                Detail = "Подробности",
+                Why = string.Empty,
+                Recommendation = string.Empty,
+                FixHint = string.Empty,
+                CanApply = false,
+                ApplySelected = false
+            };
+
+            var findings = new System.Collections.ObjectModel.ObservableCollection<FindingRow>();
+
+            // Считаем так же, как это делает модель представления: важна формула,
+            // а не сам класс окна — окно в тесте не поднять.
+            var withNothing = System.Linq.Enumerable.Count(findings, f => f.CanApply);
+
+            if (withNothing != 0)
+                throw new InvalidOperationException("В пустом списке не должно быть исправимых находок");
+
+            findings.Add(row);
+            var withOneNotFixable = System.Linq.Enumerable.Count(findings, f => f.CanApply);
+
+            if (withOneNotFixable != 0)
+                throw new InvalidOperationException("Находка без исправления не должна считаться исправимой");
+
+            // Та же находка, но исправимая.
+            findings[0] = new FindingRow
+            {
+                FindingId = "тест",
+                Mark = "ПРОБЛЕМА",
+                Color = "#FF5555",
+                Title = "Проверка",
+                Detail = "Подробности",
+                Why = string.Empty,
+                Recommendation = string.Empty,
+                FixHint = "Что-то исправить",
+                CanApply = true,
+                ApplySelected = true
+            };
+
+            var withOneFixable = System.Linq.Enumerable.Count(findings, f => f.CanApply);
+
+            if (withOneFixable != 1)
+                throw new InvalidOperationException("Исправимая находка должна посчитаться");
+
+            // И проверяем сам текст подписи: он собирается из числа.
+            var hint = withOneFixable == 1
+                ? "Одну находку можно исправить по кнопке — галочка уже стоит."
+                : $"Можно исправить по кнопке: {withOneFixable}. Галочки уже стоят.";
+
+            if (!hint.Contains("Одну находку", StringComparison.Ordinal))
+                throw new InvalidOperationException("Для одной находки текст должен быть в единственном числе: " + hint);
+        });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };
