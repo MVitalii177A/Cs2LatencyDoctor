@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Cs2LatencyDoctor.Core.History;
+using Cs2LatencyDoctor.Core.Windows;
 
 namespace Cs2LatencyDoctor.Core.Report;
 
@@ -65,13 +66,30 @@ public static class ReportExporter
         string path,
         HistorySummary? history = null)
     {
+        var system = SystemFingerprintReader.Read();
+
         var payload = new
         {
             tool = "Cs2LatencyDoctor",
             version = AppVersion.Full,
             buildDate = AppVersion.BuildDate,
-            machine = Environment.MachineName,
             exportedAt = DateTimeOffset.Now,
+
+            // Сведения о системе, на которой делалась проверка. Имени компьютера
+            // здесь намеренно нет: для разбора ошибок оно не нужно, а человек
+            // может выложить отчёт публично, не подумав об этом.
+            system = new
+            {
+                windows = system.ShortLine,
+                architecture = system.Architecture,
+                motherboard = system.Motherboard,
+                bios = system.BiosVersion,
+                cpu = system.Cpu,
+                gpu = system.Gpu,
+                gpuDriver = system.GpuDriver,
+                memory = system.MemoryTotal,
+                memorySpeed = system.MemorySpeed
+            },
             durationSeconds = Math.Round(report.Duration.TotalSeconds, 1),
             summary = report.Summary,
             history = history is null ? null : new
@@ -122,12 +140,30 @@ public static class ReportExporter
     {
         var builder = new StringBuilder();
 
+        var system = SystemFingerprintReader.Read();
+
         builder.AppendLine("ПРОВЕРКА КОМПЬЮТЕРА ДЛЯ CS2");
         builder.AppendLine(new string('=', 60));
         builder.AppendLine(AppVersion.Display);
         builder.AppendLine($"Проверка выполнена: {DateTimeOffset.Now:dd.MM.yyyy HH:mm}");
-        builder.AppendLine($"Компьютер: {Environment.MachineName}");
         builder.AppendLine($"Длительность: {report.Duration.TotalSeconds:0.#} с");
+
+        // Сведения о системе нужны, чтобы разобрать отчёт без переписки с вопросами
+        // «а что у вас за плата». Имени компьютера здесь нет намеренно: для разбора
+        // ошибок оно не нужно, а отчёт человек может выложить публично.
+        builder.AppendLine();
+        builder.AppendLine("НА ЧЁМ ВЫПОЛНЕНА ПРОВЕРКА");
+        builder.AppendLine(new string('-', 60));
+
+        foreach (var (label, value) in system.ToLines())
+            builder.AppendLine($"  {label}: {value}");
+
+        if (!system.HasHardware)
+        {
+            builder.AppendLine("  Сведения о железе прочитать не удалось.");
+            builder.AppendLine("  Это не мешает разбору находок, но затрудняет поиск причины.");
+        }
+
         builder.AppendLine();
         builder.AppendLine("ИТОГ");
         builder.AppendLine(new string('-', 60));

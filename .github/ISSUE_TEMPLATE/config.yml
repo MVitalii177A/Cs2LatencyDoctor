@@ -9,6 +9,10 @@ contact_links:
     url: https://github.com/MVitalii177A/Cs2LatencyDoctor/issues/new/choose
     about: Спросите здесь. Отвечу и, если вопрос повторяется, добавлю ответ в описание.
 
+  - name: Проверка прошла успешно — хочу добавить систему в список
+    url: https://github.com/MVitalii177A/Cs2LatencyDoctor/issues/new
+    about: Приложите файл отчёта. В нём есть сведения о системе, и я добавлю её в список проверенных.
+
   - name: Прочитать описание программы
     url: https://github.com/MVitalii177A/Cs2LatencyDoctor/blob/main/README.md
     about: Что программа умеет, чего не делает и почему.

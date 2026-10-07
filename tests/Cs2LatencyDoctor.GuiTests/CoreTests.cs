@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using Cs2LatencyDoctor.Core;
 using Cs2LatencyDoctor.Core.Background;
 using Cs2LatencyDoctor.Core.Checks;
@@ -1002,6 +1002,44 @@ internal static class CoreTests
             if (parsed.Scheme != "https")
                 throw new InvalidOperationException("Ссылка должна быть https");
         });
+
+        RunTest(results, "Отчёт содержит сведения о системе, но не имя компьютера", () =>
+        {
+            // Когда человек присылает отчёт, по нему нужно понять, на чём шла проверка:
+            // от материнской платы зависит, какие бывают сетевые карты, а от сборки
+            // Windows — какие проверки применимы. Без этого разбор превращается
+            // в переписку с вопросами «а что у вас за железо».
+            var system = SystemFingerprintReader.Read();
+
+            if (string.IsNullOrWhiteSpace(system.ShortLine))
+                throw new InvalidOperationException("Не удалось прочитать версию Windows");
+
+            if (!system.HasHardware)
+                throw new InvalidOperationException(
+                    "Не удалось прочитать сведения о железе: отчёт будет бесполезен для разбора");
+
+            // Главное: имени компьютера в сведениях быть НЕ должно. Отчёт человек
+            // может выложить публично, не подумав, а имя машины для разбора не нужно.
+            var fingerprintText = string.Join(" | ", system.ToLines().Select(l => l.Value));
+
+            if (fingerprintText.Contains(Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "В сведениях о системе оказалось имя компьютера — это лишние данные в публичном отчёте");
+
+            // Названия должны быть читаемыми, а не сырыми строками из WMI.
+            if (system.Cpu?.Contains("(R)", StringComparison.Ordinal) == true)
+                throw new InvalidOperationException("В названии процессора остались маркетинговые приставки");
+
+            if (system.Gpu?.Contains("(R)", StringComparison.Ordinal) == true)
+                throw new InvalidOperationException("В названии видеокарты остались маркетинговые приставки");
+
+            // Версия Windows должна быть с номером сборки: без него не отличить
+            // одну сборку Windows 10 от другой, а поведение у них разное.
+            if (string.IsNullOrWhiteSpace(system.WindowsBuild))
+                throw new InvalidOperationException(
+                    "В сведениях нет номера сборки Windows — по такому отчёту не воспроизвести проверку");
+        });
+
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };
