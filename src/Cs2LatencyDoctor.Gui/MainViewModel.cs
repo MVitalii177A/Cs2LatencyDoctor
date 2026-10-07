@@ -11,6 +11,19 @@ using Cs2LatencyDoctor.Core.Report;
 
 namespace Cs2LatencyDoctor.Gui;
 
+/// <summary>В каком виде сохранять отчёт.</summary>
+public enum ReportKind
+{
+    /// <summary>Текст для чтения и письма: показать провайдеру, выложить на форум.</summary>
+    Readable = 0,
+
+    /// <summary>Подробный: то же плюс состояние программы. Для отправки автору.</summary>
+    Developer = 1,
+
+    /// <summary>Обычный отчёт в JSON: для обработки скриптом.</summary>
+    Json = 2
+}
+
 /// <summary>Строка отчёта для списка в окне.</summary>
 public sealed class FindingRow
 {
@@ -451,68 +464,60 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public int SelectedForApplyCount => Findings.Count(f => f.CanApply && f.ApplySelected);
 
     /// <summary>
-    /// Сохранить отчёт в файл. Нужно, чтобы результат можно было показать:
-    /// в поддержку провайдера, на форум, в чат. Файл остаётся у человека,
-    /// никуда не отправляется.
+    /// Сохранить отчёт. Одна кнопка на три случая, потому что отчёт один:
+    /// различается только форма записи и подробность.
+    ///
+    /// Раньше на это было две кнопки, и файлы пересекались: версия, сведения
+    /// о системе, находки и история попадали в оба. Человек не понимал, какой
+    /// из них отправлять, и это создавало лишний вопрос вместо ответа.
     /// </summary>
-    public void ExportReport(string path, bool asJson)
+    public void ExportReport(string path, ReportKind kind)
     {
-        if (_lastReport is null)
-        {
-            ApplyResult = "Сначала выполните проверку: сохранять пока нечего.";
-            OnPropertyChanged(nameof(ApplyResult));
-            return;
-        }
-
         try
         {
-            var exported = asJson
-                ? ReportExporter.SaveJson(_lastReport, path, _lastHistory)
-                : ReportExporter.SaveText(_lastReport, path, _lastHistory);
+            if (kind == ReportKind.Developer)
+            {
+                var saved = DeveloperReport.Save(path, _lastReport, _lastFindings, _lastHistory, out var error);
 
-            ApplyResult = $"Отчёт сохранён ({exported.Format}, {exported.SizeText}):" +
-                          Environment.NewLine + exported.FilePath;
-            Status = "Отчёт сохранён";
+                if (saved is null)
+                {
+                    ApplyResult = "Не удалось сохранить отчёт: " + (error ?? "неизвестная причина");
+                    Status = "Ошибка сохранения";
+                }
+                else
+                {
+                    ApplyResult =
+                        "Подробный отчёт сохранён:" + Environment.NewLine + saved + Environment.NewLine +
+                        (_lastReport is not null
+                            ? "В нём есть результат последней проверки."
+                            : "Проверка ещё не выполнялась, поэтому в отчёте только сведения о системе.") +
+                        Environment.NewLine +
+                        "Программа его никуда не отправляет — приложите файл к сообщению сами.";
+
+                    Status = "Отчёт сохранён";
+                }
+            }
+            else if (_lastReport is null)
+            {
+                // Без проверки сохранять нечего: в отчёте не будет находок.
+                ApplyResult = "Сначала выполните проверку — сохранять пока нечего.";
+                Status = "Проверка не выполнялась";
+            }
+            else
+            {
+                var exported = kind == ReportKind.Json
+                    ? ReportExporter.SaveJson(_lastReport, path, _lastHistory)
+                    : ReportExporter.SaveText(_lastReport, path, _lastHistory);
+
+                ApplyResult = $"Отчёт сохранён ({exported.Format}, {exported.SizeText}):" +
+                              Environment.NewLine + exported.FilePath;
+                Status = "Отчёт сохранён";
+            }
         }
         catch (Exception ex)
         {
             ApplyResult = "Не удалось сохранить отчёт: " + ex.Message;
             Status = "Ошибка сохранения";
-        }
-
-        OnPropertyChanged(nameof(ApplyResult));
-    }
-
-    /// <summary>
-    /// Сохранить отчёт для разработчика: всё, что нужно для разбора проблемы,
-    /// в одном файле. Никуда не отправляется — человек отправит сам, если захочет.
-    ///
-    /// Проверка не обязательна: если программа падает при запуске, отчёт о падении
-    /// нужен как раз без результатов проверки. Поэтому здесь нет требования
-    /// «сначала выполните проверку» — сохраняем то, что есть.
-    /// </summary>
-    public void ExportDeveloperReport(string path)
-    {
-        var saved = DeveloperReport.Save(path, _lastReport, _lastFindings, _lastHistory, out var error);
-
-        if (saved is null)
-        {
-            ApplyResult = "Не удалось сохранить отчёт разработчику: " + (error ?? "неизвестная причина");
-            Status = "Ошибка сохранения";
-        }
-        else
-        {
-            var hasCheck = _lastReport is not null;
-
-            ApplyResult =
-                "Отчёт разработчику сохранён:" + Environment.NewLine + saved + Environment.NewLine +
-                (hasCheck
-                    ? "В нём есть результат последней проверки."
-                    : "Проверка ещё не выполнялась, поэтому в отчёте только сведения о системе.") +
-                Environment.NewLine +
-                "Приложите этот файл к сообщению на странице проекта — программа его никуда не отправляет.";
-
-            Status = "Отчёт разработчику сохранён";
         }
 
         OnPropertyChanged(nameof(ApplyResult));

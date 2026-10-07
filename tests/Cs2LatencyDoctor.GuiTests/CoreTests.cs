@@ -1040,41 +1040,64 @@ internal static class CoreTests
                     "В сведениях нет номера сборки Windows — по такому отчёту не воспроизвести проверку");
         });
 
-        RunTest(results, "Отчёт разработчику собирается и не содержит лишнего", () =>
+        RunTest(results, "Подробный отчёт собирается даже без проверки и без лишнего", () =>
         {
             // Этот файл человек отправляет сам — значит, он должен быть и полезным
             // для разбора, и безопасным: без имени компьютера и чужих путей.
-            var report = DeveloperReport.BuildJson(null, Array.Empty<CheckResult>(), null);
+            //
+            // Проверка не обязательна: если программа падает при запуске, отчёт
+            // нужен как раз без результатов проверки.
+            var directory = Path.Combine(Directory.GetCurrentDirectory(),
+                "test-dev-" + Guid.NewGuid().ToString("N")[..8]);
 
-            if (report.Length < 200)
-                throw new InvalidOperationException("Отчёт получился подозрительно коротким");
+            Directory.CreateDirectory(directory);
 
-            var parsed = System.Text.Json.JsonDocument.Parse(report);
-
-            foreach (var section in new[] { "about", "program", "system", "state" })
+            try
             {
-                if (!parsed.RootElement.TryGetProperty(section, out _))
-                    throw new InvalidOperationException($"В отчёте нет раздела «{section}»");
+                var path = Path.Combine(directory, "подробный.json");
+
+                var saved = ReportExporter.SaveJson(null, path, null,
+                    Array.Empty<CheckResult>(), DeveloperReport.Collect());
+
+                if (!File.Exists(path))
+                    throw new InvalidOperationException("Подробный отчёт не создался");
+
+                var report = File.ReadAllText(path);
+
+                if (report.Length < 200)
+                    throw new InvalidOperationException("Отчёт получился подозрительно коротким");
+
+                var parsed = System.Text.Json.JsonDocument.Parse(report);
+
+                foreach (var section in new[] { "about", "program", "system", "state" })
+                {
+                    if (!parsed.RootElement.TryGetProperty(section, out _))
+                        throw new InvalidOperationException($"В отчёте нет раздела «{section}»");
+                }
+
+                // Главное: имени компьютера быть не должно.
+                if (report.Contains(Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException(
+                        "В подробном отчёте оказалось имя компьютера — лишние данные в отправляемом файле");
+
+                // В отчёте должно быть прямо сказано, что программа его никуда не шлёт:
+                // человек отдаёт файл добровольно, и это нужно подтвердить текстом.
+                if (!report.Contains("Приложите этот файл", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException(
+                        "В отчёте не сказано, что отправляет его человек, а не программа");
+
+                // Описание содержимого тоже должно быть честным: показываем его перед сохранением.
+                var description = DeveloperReport.DescribeContents();
+
+                foreach (var expected in new[] { "НЕ будет", "никуда", "имени компьютера" })
+                {
+                    if (!description.Contains(expected, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException($"В описании содержимого нет слов про «{expected}»");
+                }
             }
-
-            // Главное: имени компьютера быть не должно.
-            if (report.Contains(Environment.MachineName, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException(
-                    "В отчёте разработчику оказалось имя компьютера — это лишние данные в отправляемом файле");
-
-            // В отчёте должно быть прямо сказано, что программа его никуда не шлёт:
-            // человек отдаёт файл добровольно, и это нужно подтвердить текстом.
-            if (!report.Contains("вручную", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException(
-                    "В отчёте не сказано, что отправляет его человек, а не программа");
-
-            // Описание содержимого тоже должно быть честным.
-            var description = DeveloperReport.DescribeContents();
-
-            foreach (var expected in new[] { "НЕ будет", "никуда", "имени компьютера" })
+            finally
             {
-                if (!description.Contains(expected, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException($"В описании содержимого нет слов про «{expected}»");
+                try { Directory.Delete(directory, recursive: true); } catch { /* не критично */ }
             }
         });
         RunTest(results, "Браузеры в системе находятся, и среди них есть запасной", () =>
@@ -1160,7 +1183,7 @@ internal static class CoreTests
                 // Содержимое тоже проверяем: файл должен быть читаемым и полным.
                 var devContent = File.ReadAllText(devPath);
 
-                foreach (var expected in new[] { "system", "findings", "about", "program" })
+                foreach (var expected in new[] { "system", "results", "about", "program", "state" })
                 {
                     if (!devContent.Contains(expected, StringComparison.Ordinal))
                         throw new InvalidOperationException($"В отчёте разработчику нет раздела «{expected}»");
@@ -1223,6 +1246,80 @@ internal static class CoreTests
                     "Библиотеки System.Management нет ни в корне, ни в подпапке — " +
                     "программа упадёт при первом обращении к сведениям о системе.");
         });
+
+        RunTest(results, "Отчёты не повторяют друг друга и не содержат лишнего", () =>
+        {
+            // Этот тест появился после того, как в окне оказались три кнопки отчётов,
+            // а два из них пересекались: версия, сведения о системе, находки и история
+            // попадали в оба файла. Два отчёта об одном и том же путают — непонятно,
+            // какой отправлять. Теперь отчёт один, различается только подробность.
+            var directory = Path.Combine(Directory.GetCurrentDirectory(),
+                "test-reports-" + Guid.NewGuid().ToString("N")[..8]);
+
+            Directory.CreateDirectory(directory);
+
+            try
+            {
+                var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 4 };
+                var report = DiagnosticRunner.CreateDefault(4).RunAsync(context, CancellationToken.None)
+                    .GetAwaiter().GetResult();
+
+                // 1. Читаемый отчёт для письма.
+                var textPath = Path.Combine(directory, "читаемый.txt");
+                ReportExporter.SaveText(report, textPath);
+
+                if (!File.Exists(textPath) || new FileInfo(textPath).Length == 0)
+                    throw new InvalidOperationException("Читаемый отчёт не создался");
+
+                // 2. Обычный JSON.
+                var plainPath = Path.Combine(directory, "обычный.json");
+                ReportExporter.SaveJson(report, plainPath, null);
+                var plain = File.ReadAllText(plainPath);
+
+                // 3. Подробный JSON: тот же отчёт плюс состояние программы.
+                var devPath = Path.Combine(directory, "подробный.json");
+                ReportExporter.SaveJson(report, devPath, null, report.Results, DeveloperReport.Collect());
+                var dev = File.ReadAllText(devPath);
+
+                // Имени компьютера не должно быть ни в одном файле.
+                foreach (var (name, content) in new[] { ("обычном", plain), ("подробном", dev) })
+                {
+                    if (content.Contains(Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException(
+                            $"В {name} отчёте оказалось имя компьютера — лишние данные в отправляемом файле");
+                }
+
+                // Главное: подробный отчёт ОТЛИЧАЕТСЯ от обычного, а не повторяет его.
+                // Если однажды кто-то снова сделает два одинаковых отчёта — тест упадёт.
+                if (!dev.Contains("\"state\"", StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "В подробном отчёте нет раздела state — значит он не отличается от обычного");
+
+                if (plain.Contains("\"state\"", StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "В обычном отчёте оказался раздел state: файлы снова повторяют друг друга");
+
+                // Оба должны быть правильным JSON с находками и сведениями о системе.
+                foreach (var (name, content) in new[] { ("обычном", plain), ("подробном", dev) })
+                {
+                    var parsed = System.Text.Json.JsonDocument.Parse(content);
+
+                    if (!parsed.RootElement.TryGetProperty("results", out var resultsNode))
+                        throw new InvalidOperationException($"В {name} отчёте нет находок");
+
+                    if (resultsNode.GetArrayLength() == 0)
+                        throw new InvalidOperationException($"В {name} отчёте находки пусты");
+
+                    if (!parsed.RootElement.TryGetProperty("system", out _))
+                        throw new InvalidOperationException($"В {name} отчёте нет сведений о системе");
+                }
+            }
+            finally
+            {
+                try { Directory.Delete(directory, recursive: true); } catch { /* не критично */ }
+            }
+        });
+
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };

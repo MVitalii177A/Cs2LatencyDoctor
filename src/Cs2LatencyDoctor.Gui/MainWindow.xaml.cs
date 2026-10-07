@@ -102,8 +102,13 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Сохранить отчёт в файл. Человек выбирает место сам; по расширению понятно,
-    /// в каком виде сохранять — текст для чтения или JSON для обработки.
+    /// Сохранить отчёт. Одна кнопка на два случая: раньше их было две, и отчёты
+    /// пересекались — версия, сведения о системе, находки и история попадали в оба
+    /// файла. Разница только в подробностях о состоянии программы, поэтому выбор
+    /// делается здесь, при сохранении, а не двумя кнопками в окне.
+    ///
+    /// Формулировки про человека, а не про того, кто читает: «отправить автору»
+    /// понятнее, чем «для разработчика», и не заставляет гадать, чем файлы различаются.
     /// </summary>
     private void OnExportClick(object sender, RoutedEventArgs e)
     {
@@ -112,48 +117,35 @@ public partial class MainWindow : Window
             Title = "Сохранить отчёт о проверке",
             FileName = ReportExporter.SuggestFileName(DateTimeOffset.Now, "txt"),
             DefaultExt = ".txt",
-            Filter = "Текстовый отчёт (*.txt)|*.txt|Данные в формате JSON (*.json)|*.json",
+            Filter =
+                "Отчёт для отправки автору — подробный (*.txt)|*.txt|" +
+                "Отчёт для чтения и письма (*.txt)|*.txt|" +
+                "Данные в формате JSON — для обработки (*.json)|*.json",
+            FilterIndex = 2,
             InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
             AddExtension = true
         };
 
         if (dialog.ShowDialog(this) != true) return;
 
-        var asJson = dialog.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
-        _viewModel.ExportReport(dialog.FileName, asJson);
-    }
-
-    /// <summary>
-    /// Отчёт разработчику. Перед сохранением показываем, что именно попадёт в файл,
-    /// и отдельно — чего в нём не будет. Человек должен понимать, что отдаёт.
-    ///
-    /// Файл никуда не отправляется: он остаётся на диске, отправлять его человек
-    /// будет сам. В этом и смысл — обещание «данные не покидают компьютер» цело.
-    /// </summary>
-    private void OnDeveloperReportClick(object sender, RoutedEventArgs e)
-    {
-        var dialog = new Microsoft.Win32.SaveFileDialog
+        var kind = dialog.FilterIndex switch
         {
-            Title = "Сохранить отчёт для разработчика",
-            FileName = DeveloperReport.SuggestFileName(DateTimeOffset.Now),
-            DefaultExt = ".json",
-            Filter = "Отчёт для разработчика (*.json)|*.json|Текстовый файл (*.txt)|*.txt",
-            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
-            AddExtension = true
+            1 => ReportKind.Developer,
+            3 => ReportKind.Json,
+            _ => ReportKind.Readable
         };
 
-        if (dialog.ShowDialog(this) != true) return;
+        _viewModel.ExportReport(dialog.FileName, kind);
 
-        _viewModel.ExportDeveloperReport(dialog.FileName);
+        // Для подробного отчёта показываем, что в него попало и чего в нём нет:
+        // человек отдаёт файл добровольно и должен понимать, что именно отдаёт.
+        if (kind != ReportKind.Developer) return;
 
-        // После сохранения предлагаем отправить. Не открываем браузер сами:
-        // поверх только что сохранённого файла окно с ошибкой браузера
-        // выглядело бы издевательством.
         var answer = MessageBox.Show(
-            "Отчёт сохранён." + Environment.NewLine + Environment.NewLine +
+            "Подробный отчёт сохранён." + Environment.NewLine + Environment.NewLine +
             DeveloperReport.DescribeContents() + Environment.NewLine + Environment.NewLine +
             "Отправить его автору сейчас? Откроется страница, где нужно приложить файл.",
-            "Отчёт для разработчика", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            "Отчёт сохранён", MessageBoxButton.YesNo, MessageBoxImage.Information);
 
         if (answer == MessageBoxResult.Yes) OnReportProblemClick(sender, e);
     }

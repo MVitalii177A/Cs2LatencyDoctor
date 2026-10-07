@@ -138,13 +138,10 @@
                     Margin="0,0,8,8" Click="OnRevertClick" IsEnabled="{Binding IsIdle}"/>
             <Button Content="Сохранить отчёт" Style="{StaticResource BaseButton}"
                     Margin="0,0,8,8" Click="OnExportClick" IsEnabled="{Binding IsIdle}"
-                    ToolTip="Сохранить результат проверки в читаемый файл: его можно показать провайдеру или выложить на форум."/>
-            <Button Content="Отчёт разработчику" Style="{StaticResource BaseButton}"
-                    Margin="0,0,8,8" Click="OnDeveloperReportClick" IsEnabled="{Binding IsIdle}"
-                    ToolTip="Собрать всё в один файл для отправки автору: версия, сведения о вашем железе, находки, настройки. Программа никуда его не отправляет — файл останется у вас, отправите сами."/>
-            <Button Content="Что-то не работает?" Style="{StaticResource BaseButton}"
+                    ToolTip="Сохранить результат проверки в файл: читаемый текст для письма или разбора, либо подробный JSON для отправки автору. Программа никуда его не отправляет — отправите сами."/>
+            <Button Content="Сообщить о проблеме" Style="{StaticResource BaseButton}"
                     Margin="0,0,8,8" Click="OnReportProblemClick"
-                    ToolTip="Открыть страницу, где можно написать о проблеме. Версия программы подставится сама — приложите файл отчёта, и я разберусь."/>
+                    ToolTip="Открыть страницу, где можно написать о проблеме. Версия программы подставится сама. Приложите файл отчёта — разберусь быстрее."/>
             <Button Content="Перезапустить от администратора" Style="{StaticResource BaseButton}"
                     Margin="0,0,8,8" Click="OnElevateClick"/>
             <Button Content="♥ Поблагодарить" Style="{StaticResource DonateButton}"

@@ -19,6 +19,53 @@ public sealed class ExportedReport
 }
 
 /// <summary>
+/// Что положить в отчёт дополнительно к результатам проверки.
+///
+/// Раньше это были два разных отчёта с двумя кнопками, и они пересекались:
+/// версия, сведения о системе, находки и история попадали в оба. Разница была
+/// только в подробностях о состоянии программы. Два отчёта об одном и том же
+/// путают: непонятно, какой файл отправлять.
+/// </summary>
+public sealed class DeveloperDetails
+{
+    /// <summary>Версия среды выполнения: нужна, если проблема связана с .NET.</summary>
+    public string? Runtime { get; init; }
+
+    public bool Is64Bit { get; init; }
+
+    /// <summary>Папка, куда программа пишет свои файлы.</summary>
+    public string? DataDirectory { get; init; }
+
+    public bool UndoJournalExists { get; init; }
+    public int UndoJournalEntries { get; init; }
+    public bool HistoryFileExists { get; init; }
+    public bool IsAdministrator { get; init; }
+
+    /// <summary>Что именно попадает в файл и чего в нём не будет. Показывается человеку.</summary>
+    public static string DescribeContents() =>
+        string.Join(Environment.NewLine, new[]
+        {
+            "В файл попадёт:",
+            "",
+            "  • версия программы и дата сборки;",
+            "  • версия Windows и разрядность;",
+            "  • материнская плата, процессор, видеокарта с версией драйвера;",
+            "  • объём и частота памяти;",
+            "  • все находки проверки с цифрами и пояснениями;",
+            "  • состояние программы: журнал изменений, история замеров.",
+            "",
+            "Чего в файле НЕ будет:",
+            "",
+            "  • имени компьютера и вашего имени;",
+            "  • путей к вашим личным папкам и файлам;",
+            "  • паролей, ключей и содержимого документов.",
+            "",
+            "Программа никуда этот файл не отправляет.",
+            "Он сохранится на диск, и вы сами решите, отправлять ли его."
+        });
+}
+
+/// <summary>
 /// Сохранение отчёта в файл.
 ///
 /// Зачем это нужно. С результатами проверки человек идёт разговаривать: к провайдеру,
@@ -37,6 +84,9 @@ public static class ReportExporter
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
+
+    /// <summary>Куда отправлять отчёт. Держим здесь, чтобы адрес не расходился с окном программы.</summary>
+    public const string FeedbackUrl = "https://github.com/MVitalii177A/Cs2LatencyDoctor/issues/new";
 
     /// <summary>Предлагаемое имя файла: дата и время, чтобы отчёты не перезаписывали друг друга.</summary>
     public static string SuggestFileName(DateTimeOffset now, string extension) =>
@@ -60,20 +110,41 @@ public static class ReportExporter
         };
     }
 
-    /// <summary>Сохранить отчёт в JSON: его можно обработать программой или скриптом.</summary>
+    /// <summary>
+    /// Сохранить отчёт в JSON. Если переданы подробности о состоянии программы,
+    /// в файл добавляются разделы program и state.
+    ///
+    /// Один метод на оба случая намеренно. Раньше их было два, и они пересекались:
+    /// версия, сведения о системе, находки и история попадали в оба файла, а
+    /// различались только парой разделов. Два отчёта об одном и том же путают —
+    /// непонятно, какой файл отправлять. Теперь это один отчёт, а подробности
+    /// включаются по надобности.
+    /// </summary>
     public static ExportedReport SaveJson(
-        DiagnosticReport report,
+        DiagnosticReport? report,
         string path,
-        HistorySummary? history = null)
+        HistorySummary? history = null,
+        IReadOnlyList<CheckResult>? findings = null,
+        DeveloperDetails? developer = null)
     {
         var system = SystemFingerprintReader.Read();
+        var results = findings ?? report?.Results ?? Array.Empty<CheckResult>();
 
         var payload = new
         {
-            tool = "Cs2LatencyDoctor",
-            version = AppVersion.Full,
-            buildDate = AppVersion.BuildDate,
-            exportedAt = DateTimeOffset.Now,
+            about = new
+            {
+                what = "Отчёт Cs2LatencyDoctor о проверке компьютера",
+                tool = "Cs2LatencyDoctor",
+                version = AppVersion.Full,
+                buildDate = AppVersion.BuildDate,
+                exportedAt = DateTimeOffset.Now,
+                purpose = developer is null
+                    ? "Результат проверки: находки, замеры и сведения о системе."
+                    : "Результат проверки и состояние программы — для разбора проблемы.",
+                privacy = "Имени компьютера, вашего имени и путей к личным папкам здесь нет.",
+                howToSend = "Приложите этот файл к сообщению: " + FeedbackUrl
+            },
 
             // Сведения о системе, на которой делалась проверка. Имени компьютера
             // здесь намеренно нет: для разбора ошибок оно не нужно, а человек
@@ -90,15 +161,49 @@ public static class ReportExporter
                 memory = system.MemoryTotal,
                 memorySpeed = system.MemorySpeed
             },
-            durationSeconds = Math.Round(report.Duration.TotalSeconds, 1),
-            summary = report.Summary,
-            history = history is null ? null : new
+
+            // Состояние программы: только в подробном отчёте. Нужно, когда дело
+            // не в проверках, а в том, как программа ведёт себя на чужой машине.
+            program = developer is null ? null : new
             {
-                totalRuns = history.TotalRuns,
-                runsWithProblems = history.RunsWithProblems,
-                text = history.Text
+                runtime = developer.Runtime,
+                is64Bit = developer.Is64Bit,
+                isAdministrator = developer.IsAdministrator
             },
-            results = report.Results.Select(r => new
+
+            state = developer is null ? null : new
+            {
+                dataDirectory = developer.DataDirectory,
+                undoJournalExists = developer.UndoJournalExists,
+                undoJournalEntries = developer.UndoJournalEntries,
+                historyFileExists = developer.HistoryFileExists
+            },
+
+            checkRun = report is null ? null : new
+            {
+                durationSeconds = Math.Round(report.Duration.TotalSeconds, 1),
+                summary = report.Summary,
+                counts = new
+                {
+                    problems = report.Count(Severity.Problem),
+                    warnings = report.Count(Severity.Warning),
+                    info = report.Count(Severity.Info),
+                    ok = report.Count(Severity.Ok),
+                    skipped = report.Count(Severity.Skipped)
+                }
+            },
+
+            history = history is null || !history.HasHistory
+                ? null
+                : new
+                {
+                    totalRuns = history.TotalRuns,
+                    runsWithProblems = history.RunsWithProblems,
+                    text = history.Text
+                },
+
+            // Находки: и в обычном, и в подробном отчёте — это главное.
+            results = results.Select(r => new
             {
                 id = r.Id,
                 title = r.Title,
