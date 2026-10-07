@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Cs2LatencyDoctor.Core;
 using Cs2LatencyDoctor.Core.Background;
 using Cs2LatencyDoctor.Core.Checks;
@@ -1040,6 +1040,75 @@ internal static class CoreTests
                     "В сведениях нет номера сборки Windows — по такому отчёту не воспроизвести проверку");
         });
 
+        RunTest(results, "Отчёт разработчику собирается и не содержит лишнего", () =>
+        {
+            // Этот файл человек отправляет сам — значит, он должен быть и полезным
+            // для разбора, и безопасным: без имени компьютера и чужих путей.
+            var report = DeveloperReport.BuildJson(null, Array.Empty<CheckResult>(), null);
+
+            if (report.Length < 200)
+                throw new InvalidOperationException("Отчёт получился подозрительно коротким");
+
+            var parsed = System.Text.Json.JsonDocument.Parse(report);
+
+            foreach (var section in new[] { "about", "program", "system", "state" })
+            {
+                if (!parsed.RootElement.TryGetProperty(section, out _))
+                    throw new InvalidOperationException($"В отчёте нет раздела «{section}»");
+            }
+
+            // Главное: имени компьютера быть не должно.
+            if (report.Contains(Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "В отчёте разработчику оказалось имя компьютера — это лишние данные в отправляемом файле");
+
+            // В отчёте должно быть прямо сказано, что программа его никуда не шлёт:
+            // человек отдаёт файл добровольно, и это нужно подтвердить текстом.
+            if (!report.Contains("вручную", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(
+                    "В отчёте не сказано, что отправляет его человек, а не программа");
+
+            // Описание содержимого тоже должно быть честным.
+            var description = DeveloperReport.DescribeContents();
+
+            foreach (var expected in new[] { "НЕ будет", "никуда", "имени компьютера" })
+            {
+                if (!description.Contains(expected, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException($"В описании содержимого нет слов про «{expected}»");
+            }
+        });
+        RunTest(results, "Браузеры в системе находятся, и среди них есть запасной", () =>
+        {
+            // Это защита от истории с падающим Firefox: браузер по умолчанию не открыл
+            // ссылку, и человек остался ни с чем. Программа должна уметь найти другой.
+            var browsers = BrowserLauncher.FindInstalled();
+
+            if (browsers.Count == 0)
+                throw new InvalidOperationException(
+                    "В системе не найдено ни одного браузера — при сломанном браузере по умолчанию " +
+                    "человек не сможет открыть страницу сообщений");
+
+            foreach (var browser in browsers)
+            {
+                if (!File.Exists(browser.ExecutablePath))
+                    throw new InvalidOperationException(
+                        $"В списке браузеров путь, которого нет: {browser.ExecutablePath}");
+
+                if (string.IsNullOrWhiteSpace(browser.Title))
+                    throw new InvalidOperationException("У браузера пустое название в списке");
+            }
+
+            // Повторов быть не должно: один браузер может быть прописан в реестре
+            // дважды — для пользователя и для всех.
+            var duplicates = browsers
+                .GroupBy(b => b.ExecutablePath, StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Count() > 1)
+                .ToList();
+
+            if (duplicates.Count > 0)
+                throw new InvalidOperationException(
+                    "Один и тот же браузер попал в список дважды: " + duplicates[0].Key);
+        });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };

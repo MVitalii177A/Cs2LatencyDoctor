@@ -39,8 +39,8 @@ body:
     id: version
     attributes:
       label: Версия программы
-      description: Видна в окне сверху слева — «Версия 1.1.1 от 07.10.2026». Или в файле отчёта.
-      placeholder: "1.1.1"
+      description: Видна в окне сверху слева — «Версия 1.2.0 от 07.10.2026». Или в файле отчёта.
+      placeholder: "1.2.0"
     validations:
       required: true
 
@@ -49,9 +49,9 @@ body:
     attributes:
       label: Какой файл вы скачали
       options:
-        - Cs2LatencyDoctor-1.1.1-full.zip (60 МБ, .NET не нужен)
-        - Cs2LatencyDoctor-1.1.1-lite.zip (маленький, нужен .NET)
-        - Cs2LatencyDoctor-1.1.1-console.zip (без окна)
+        - Cs2LatencyDoctor-1.2.0-full.zip (60 МБ, .NET не нужен)
+        - Cs2LatencyDoctor-1.2.0-lite.zip (маленький, нужен .NET)
+        - Cs2LatencyDoctor-1.2.0-console.zip (без окна)
         - Собрал сам из исходников
         - Не помню
     validations:

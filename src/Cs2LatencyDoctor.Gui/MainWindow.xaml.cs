@@ -124,6 +124,41 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Отчёт разработчику. Перед сохранением показываем, что именно попадёт в файл,
+    /// и отдельно — чего в нём не будет. Человек должен понимать, что отдаёт.
+    ///
+    /// Файл никуда не отправляется: он остаётся на диске, отправлять его человек
+    /// будет сам. В этом и смысл — обещание «данные не покидают компьютер» цело.
+    /// </summary>
+    private void OnDeveloperReportClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Сохранить отчёт для разработчика",
+            FileName = DeveloperReport.SuggestFileName(DateTimeOffset.Now),
+            DefaultExt = ".json",
+            Filter = "Отчёт для разработчика (*.json)|*.json|Текстовый файл (*.txt)|*.txt",
+            InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            AddExtension = true
+        };
+
+        if (dialog.ShowDialog(this) != true) return;
+
+        _viewModel.ExportDeveloperReport(dialog.FileName);
+
+        // После сохранения предлагаем отправить. Не открываем браузер сами:
+        // поверх только что сохранённого файла окно с ошибкой браузера
+        // выглядело бы издевательством.
+        var answer = MessageBox.Show(
+            "Отчёт сохранён." + Environment.NewLine + Environment.NewLine +
+            DeveloperReport.DescribeContents() + Environment.NewLine + Environment.NewLine +
+            "Отправить его автору сейчас? Откроется страница, где нужно приложить файл.",
+            "Отчёт для разработчика", MessageBoxButton.YesNo, MessageBoxImage.Information);
+
+        if (answer == MessageBoxResult.Yes) OnReportProblemClick(sender, e);
+    }
+
+    /// <summary>
     /// Сообщить о проблеме. Открывает форму на GitHub, где уже подставлена версия
     /// программы: человеку меньше писать, а мне сразу видно, какая это сборка.
     ///
@@ -138,26 +173,53 @@ public partial class MainWindow : Window
         try { System.Windows.Clipboard.SetText(url); }
         catch { /* буфер обмена может быть занят другой программой */ }
 
-        if (FeedbackLinks.Open(url))
+        // Пробуем открыть обычным способом, а если не вышло — перебираем браузеры.
+        // У первого пользователя браузер по умолчанию падал на любой ссылке,
+        // поэтому «просто открыть» здесь недостаточно.
+        var openedWith = BrowserLauncher.Open(url);
+
+        if (openedWith is not null)
         {
             MessageBox.Show(
-                "Открыл страницу, где можно написать о проблеме.\n\n" +
-                "Чтобы разобраться быстро:\n" +
-                "  1. Опишите, что случилось и что вы делали.\n" +
-                "  2. Нажмите «Сохранить отчёт» и приложите файл к сообщению.\n\n" +
-                "Версию программы я подставил за вас.\n" +
-                "Ссылка скопирована в буфер обмена — если страница не открылась, " +
-                "вставьте её в браузер вручную.",
+                "Открыл страницу в браузере: " + openedWith + "." +
+                Environment.NewLine + Environment.NewLine +
+                "Чтобы разобраться быстро:" + Environment.NewLine +
+                "  1. Опишите, что случилось и что вы делали." + Environment.NewLine +
+                "  2. Нажмите «Отчёт разработчику» и приложите файл к сообщению." +
+                Environment.NewLine + Environment.NewLine +
+                "Версию программы я подставил за вас." + Environment.NewLine +
+                "Ссылка скопирована в буфер обмена — пригодится, если страница не открылась.",
                 "Что-то не работает?", MessageBoxButton.OK, MessageBoxImage.Information);
 
             return;
         }
 
-        MessageBox.Show(
-            "Не удалось открыть браузер.\n\n" +
-            "Ссылка скопирована в буфер обмена — вставьте её в адресную строку браузера:\n\n" +
-            url,
-            "Что-то не работает?", MessageBoxButton.OK, MessageBoxImage.Information);
+        // Не открылось ничего: даём выбрать браузер вручную.
+        OfferBrowserChoice(url);
+    }
+
+    /// <summary>
+    /// Открыть ссылку в выбранном вручную браузере. Нужно, когда браузер
+    /// по умолчанию не работает, а остальные программа не смогла запустить сама.
+    /// </summary>
+    private void OfferBrowserChoice(string url)
+    {
+        var browsers = BrowserLauncher.FindInstalled();
+
+        if (browsers.Count == 0)
+        {
+            MessageBox.Show(
+                "Не удалось открыть браузер: в системе не найдено ни одного." +
+                Environment.NewLine + Environment.NewLine +
+                "Ссылка скопирована в буфер обмена. Вставьте её в адресную строку " +
+                "любого браузера:" + Environment.NewLine + Environment.NewLine + url,
+                "Что-то не работает?", MessageBoxButton.OK, MessageBoxImage.Information);
+
+            return;
+        }
+
+        var window = new BrowserChoiceWindow(url, browsers) { Owner = this };
+        window.ShowDialog();
     }
 
     /// <summary>

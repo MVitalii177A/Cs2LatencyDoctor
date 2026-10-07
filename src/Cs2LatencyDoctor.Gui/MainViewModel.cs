@@ -482,6 +482,42 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         OnPropertyChanged(nameof(ApplyResult));
     }
+
+    /// <summary>
+    /// Сохранить отчёт для разработчика: всё, что нужно для разбора проблемы,
+    /// в одном файле. Никуда не отправляется — человек отправит сам, если захочет.
+    ///
+    /// Проверка не обязательна: если программа падает при запуске, отчёт о падении
+    /// нужен как раз без результатов проверки. Поэтому здесь нет требования
+    /// «сначала выполните проверку» — сохраняем то, что есть.
+    /// </summary>
+    public void ExportDeveloperReport(string path)
+    {
+        var saved = DeveloperReport.Save(path, _lastReport, _lastFindings, _lastHistory, out var error);
+
+        if (saved is null)
+        {
+            ApplyResult = "Не удалось сохранить отчёт разработчику: " + (error ?? "неизвестная причина");
+            Status = "Ошибка сохранения";
+        }
+        else
+        {
+            var hasCheck = _lastReport is not null;
+
+            ApplyResult =
+                "Отчёт разработчику сохранён:" + Environment.NewLine + saved + Environment.NewLine +
+                (hasCheck
+                    ? "В нём есть результат последней проверки."
+                    : "Проверка ещё не выполнялась, поэтому в отчёте только сведения о системе.") +
+                Environment.NewLine +
+                "Приложите этот файл к сообщению на странице проекта — программа его никуда не отправляет.";
+
+            Status = "Отчёт разработчику сохранён";
+        }
+
+        OnPropertyChanged(nameof(ApplyResult));
+        OnPropertyChanged(nameof(Status));
+    }
     /// <summary>
     /// Сравнить последний замер с предыдущим и показать разницу словами.
     /// Это ответ на вопрос «что изменилось после применённых исправлений».

@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:Cs2LatencyDoctor.Gui"
         Title="Cs2LatencyDoctor — что мешает играть в CS2"
         Height="760" Width="1100"
-        MinHeight="600" MinWidth="920"
+        MinHeight="600" MinWidth="1060"
         Background="#14151A"
         WindowStartupLocation="CenterScreen">
 
@@ -123,34 +123,42 @@
                        FontSize="12" Margin="0,6,0,0" TextWrapping="Wrap"/>
         </StackPanel>
 
-        <!-- Кнопки -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,14">
+        <!--
+          Кнопки в панели с переносом, а не в строке.
+          В обычной строке кнопки не переносятся: при сужении окна крайние уезжают
+          за границу и становятся недоступны — их не видно и не нажать. Панель
+          с переносом переносит не поместившиеся кнопки на следующую строку.
+        -->
+        <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,14">
             <Button Content="Проверить компьютер" Style="{StaticResource PrimaryButton}"
                     Click="OnCheckClick" IsEnabled="{Binding IsIdle}"/>
             <Button Content="Применить исправления" Style="{StaticResource BaseButton}"
-                    Margin="8,0,0,0" Click="OnApplyClick" IsEnabled="{Binding IsIdle}"/>
+                    Margin="8,0,8,8" Click="OnApplyClick" IsEnabled="{Binding IsIdle}"/>
             <Button Content="Откатить изменения" Style="{StaticResource BaseButton}"
-                    Margin="8,0,0,0" Click="OnRevertClick" IsEnabled="{Binding IsIdle}"/>
+                    Margin="0,0,8,8" Click="OnRevertClick" IsEnabled="{Binding IsIdle}"/>
             <Button Content="Сохранить отчёт" Style="{StaticResource BaseButton}"
-                    Margin="8,0,0,0" Click="OnExportClick" IsEnabled="{Binding IsIdle}"
-                    ToolTip="Сохранить результат проверки в файл: его можно показать провайдеру или выложить на форум."/>
+                    Margin="0,0,8,8" Click="OnExportClick" IsEnabled="{Binding IsIdle}"
+                    ToolTip="Сохранить результат проверки в читаемый файл: его можно показать провайдеру или выложить на форум."/>
+            <Button Content="Отчёт разработчику" Style="{StaticResource BaseButton}"
+                    Margin="0,0,8,8" Click="OnDeveloperReportClick" IsEnabled="{Binding IsIdle}"
+                    ToolTip="Собрать всё в один файл для отправки автору: версия, сведения о вашем железе, находки, настройки. Программа никуда его не отправляет — файл останется у вас, отправите сами."/>
             <Button Content="Что-то не работает?" Style="{StaticResource BaseButton}"
-                    Margin="8,0,0,0" Click="OnReportProblemClick"
+                    Margin="0,0,8,8" Click="OnReportProblemClick"
                     ToolTip="Открыть страницу, где можно написать о проблеме. Версия программы подставится сама — приложите файл отчёта, и я разберусь."/>
             <Button Content="Перезапустить от администратора" Style="{StaticResource BaseButton}"
-                    Margin="8,0,0,0" Click="OnElevateClick"/>
+                    Margin="0,0,8,8" Click="OnElevateClick"/>
             <Button Content="♥ Поблагодарить" Style="{StaticResource DonateButton}"
-                    Margin="10,0,0,0" VerticalAlignment="Center" Click="OnDonateClick"
+                    Margin="2,0,8,8" VerticalAlignment="Center" Click="OnDonateClick"
                     ToolTip="Программа бесплатная. Здесь реквизиты, если захотите поддержать разработку."/>
 
             <TextBlock Text="Замер, сек:" Foreground="{StaticResource MutedBrush}"
-                       VerticalAlignment="Center" Margin="18,0,6,0" FontSize="12"/>
+                       VerticalAlignment="Center" Margin="10,0,6,8" FontSize="12"/>
             <TextBox Text="{Binding ProbeSeconds}" Width="44" Background="#2A2C34"
                      Foreground="#E6E7EB" BorderThickness="0" Padding="8,6"
-                     FontSize="13" VerticalContentAlignment="Center"/>
+                     FontSize="13" VerticalContentAlignment="Center" Margin="0,0,0,8"/>
             <TextBlock Text="(3–60)" Foreground="#6E6E77" VerticalAlignment="Center"
-                       Margin="6,0,0,0" FontSize="11"/>
-        </StackPanel>
+                       Margin="6,0,0,8" FontSize="11"/>
+        </WrapPanel>
 
         <!-- Основная область -->
         <Grid Grid.Row="2">
