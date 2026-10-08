@@ -58,8 +58,8 @@ public static class Program
             return 2;
         }
 
-        var gateway = new PingRunner(network.Gateway, "роутер");
-        var externals = ExternalHosts.Select(h => new PingRunner(h, h)).ToArray();
+        var gateway = new IcmpProbe(network.Gateway, "роутер");
+        var externals = ExternalHosts.Select(h => new IcmpProbe(h, h)).ToArray();
 
         if (!gateway.Resolves())
         {
@@ -84,9 +84,11 @@ public static class Program
             Console.WriteLine("    • система или антивирус запрещают программе проверку связи;");
             Console.WriteLine("    • сеть действительно не работает прямо сейчас.");
             Console.WriteLine();
-            Console.WriteLine("  Попробуйте запустить от имени администратора: тогда проверка идёт напрямую.");
-            Console.WriteLine("  Проверить вручную: откройте командную строку и введите");
+            Console.WriteLine($"  Проверить вручную: откройте командную строку и введите");
             Console.WriteLine($"     ping {network.Gateway}");
+            Console.WriteLine($"     ping {ExternalHosts[0]}");
+            Console.WriteLine();
+            Console.WriteLine("  Если ping вручную тоже не отвечает — сеть действительно не работает.");
 
             return 3;
         }
@@ -132,8 +134,8 @@ public static class Program
 
     private static async Task WatchAsync(
         NetworkSnapshot startNetwork,
-        PingRunner gateway,
-        PingRunner[] externals,
+        IcmpProbe gateway,
+        IcmpProbe[] externals,
         CancellationToken ct)
     {
         var network = startNetwork;
@@ -207,7 +209,7 @@ public static class Program
                 if (wasDown)
                 {
                     Write($"[{Now()}] СВЯЗЬ ВЕРНУЛАСЬ");
-                    Write($"         роутер {routerMs} мс, интернет {internetMs} мс");
+                    Write($"         роутер {Describe(routerMs)}, {external.Title} {Describe(internetMs)}");
                     Write("");
                     wasDown = false;
                 }
@@ -219,7 +221,10 @@ public static class Program
 
                     var ctx = ReadContext(routerMs!.Value, internetMs!.Value, routerTimes, internetTimes);
 
-                    Write($"[{Now()}] в порядке: роутер {routerMs} мс, интернет {internetMs} мс" +
+                    // Узел называем по имени: внешних узлов два, и цифры у них разные.
+                    // Без имени показалось бы, что связь скачет между 29 и 43 мс.
+                    Write($"[{Now()}] в порядке: роутер {Describe(routerMs)}" +
+                          $" · {external.Title} {Describe(internetMs)}" +
                           $" · соединений {ctx.Connections} · процессов {ctx.Processes}" +
                           $" · CS2 {(ctx.Cs2Running ? "идёт" : "нет")}" +
                           $" · память {ctx.MemoryUsedPercent}% · ЦП {ctx.CpuLoad}%");
