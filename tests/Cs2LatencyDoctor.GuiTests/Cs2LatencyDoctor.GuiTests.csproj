@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Cs2LatencyDoctor.Gui\Cs2LatencyDoctor.Gui.csproj" />
+    <ProjectReference Include="..\..\tools\NetWatch\NetWatch.csproj" />
   </ItemGroup>
 
 </Project>

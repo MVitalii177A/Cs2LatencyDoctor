@@ -1550,6 +1550,64 @@ internal static class CoreTests
             if (empty.Parsed)
                 throw new InvalidOperationException("Пустой вывод не должен считаться разобранным");
         });
+        RunTest(results, "NetWatch читает вывод ping.exe на обоих языках", () =>
+        {
+            // NetWatch — отдельная программа для наблюдения за сетью. Она читает
+            // задержку из вывода ping.exe, потому что ICMP из .NET требует прав
+            // администратора, а утилите система отвечать разрешает.
+            //
+            // Проверяем разбор: русские версии Windows печатают в кодировке консоли
+            // и пишут «время<1мс», когда ответ быстрее миллисекунды. Без разбора
+            // этого случая замер до роутера не работает вовсе.
+
+            // 1. Русский вывод с «меньше миллисекунды» — так отвечает роутер.
+            if (Cs2LatencyDoctor.NetWatch.PingRunner.ParseTime(
+                    "Ответ от 192.168.31.1: число байт=32 время<1мс TTL=64") is not { } less)
+                throw new InvalidOperationException("«время<1мс» не разобралось");
+
+            if (less > 0.5)
+                throw new InvalidOperationException("«время<1мс» разобрано как " + less + " — завышает задержку");
+
+            // 2. Русский вывод с обычным временем.
+            if (Cs2LatencyDoctor.NetWatch.PingRunner.ParseTime(
+                    "Ответ от 1.1.1.1: число байт=32 время=29мс TTL=57") is not { } ru || ru != 29)
+                throw new InvalidOperationException("«время=29мс» разобрано неверно");
+
+            // 3. Английский вывод.
+            if (Cs2LatencyDoctor.NetWatch.PingRunner.ParseTime(
+                    "Reply from 1.1.1.1: bytes=32 time=31ms TTL=57") is not { } en || en != 31)
+                throw new InvalidOperationException("«time=31ms» разобрано неверно");
+
+            // 4. Нет ответа: функция должна вернуть пусто, а не ноль.
+            // Ноль означал бы «мгновенный ответ» — то есть выдуманную хорошую связь.
+            if (Cs2LatencyDoctor.NetWatch.PingRunner.ParseTime("Request timed out.") is not null)
+                throw new InvalidOperationException("Таймаут разобран как ответ — это выдумало бы связь, которой нет");
+
+            if (Cs2LatencyDoctor.NetWatch.PingRunner.ParseTime(string.Empty) is not null)
+                throw new InvalidOperationException("Пустой вывод разобран как ответ");
+
+            // 5. Кодировка консоли: русский ping печатает в CP866, а не в UTF-8.
+            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+
+            var consoleBytes = System.Text.Encoding.GetEncoding(866).GetBytes(
+                "Ответ от 192.168.31.1: время<1мс");
+
+            var decoded = Cs2LatencyDoctor.NetWatch.PingRunner.DecodeConsoleBytes(consoleBytes);
+
+            if (!decoded.Contains("Ответ", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Вывод в кодировке консоли не прочитался — замер задержки не заработает: " + decoded);
+
+            if (Cs2LatencyDoctor.NetWatch.PingRunner.ParseTime(decoded) is null)
+                throw new InvalidOperationException("Время из вывода в кодировке консоли не разобралось");
+
+            // 6. UTF-8 тоже должен читаться: английские версии печатают в нём.
+            var utf8Bytes = System.Text.Encoding.UTF8.GetBytes("Reply from 1.1.1.1: time=29ms");
+
+            if (Cs2LatencyDoctor.NetWatch.PingRunner.ParseTime(
+                    Cs2LatencyDoctor.NetWatch.PingRunner.DecodeConsoleBytes(utf8Bytes)) is null)
+                throw new InvalidOperationException("Вывод в UTF-8 не разобрался");
+        });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };

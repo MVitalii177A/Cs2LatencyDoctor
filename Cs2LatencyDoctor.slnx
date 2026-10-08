@@ -4,6 +4,9 @@
     <Project Path="src/Cs2LatencyDoctor.Core/Cs2LatencyDoctor.Core.csproj" />
     <Project Path="src/Cs2LatencyDoctor.Gui/Cs2LatencyDoctor.Gui.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/NetWatch/NetWatch.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Cs2LatencyDoctor.GuiTests/Cs2LatencyDoctor.GuiTests.csproj" />
   </Folder>

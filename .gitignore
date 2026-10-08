@@ -11,3 +11,6 @@ publish/
 release/
 
 dist/
+
+tools/NetWatch/выпуск/
+tools/NetWatch/тест*/
