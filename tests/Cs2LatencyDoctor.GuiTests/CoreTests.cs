@@ -1462,6 +1462,94 @@ internal static class CoreTests
             if (!hint.Contains("Одну находку", StringComparison.Ordinal))
                 throw new InvalidOperationException("Для одной находки текст должен быть в единственном числе: " + hint);
         });
+        RunTest(results, "Разбор вывода ping.exe: времена ответов и «меньше миллисекунды»", () =>
+        {
+            // Этот тест появился после разбора жалобы на джиттер. Программа показывала
+            // джиттер до роутера 1,3–2,5 мс там, где его нет: она не умела читать
+            // «время<1мс» из вывода ping.exe и уходила на TCP-замер, а TCP-подключение
+            // добавляет собственное дрожание в 1–3 мс.
+            //
+            // Проверяем оба языка: вывод ping.exe зависит от языка Windows, а не программы.
+
+            // 1. Русский вывод, ответы меньше миллисекунды — как до роутера.
+            var russian = string.Join("\n", new[]
+            {
+                "",
+                "Обмен пакетами с 192.168.31.1 по с 32 байтами данных:",
+                "Ответ от 192.168.31.1: число байт=32 время<1мс TTL=64",
+                "Ответ от 192.168.31.1: число байт=32 время<1мс TTL=64",
+                "Ответ от 192.168.31.1: число байт=32 время<1мс TTL=64",
+                "",
+                "Статистика Ping для 192.168.31.1:",
+                "    Пакетов: отправлено = 3, получено = 3, потеряно = 0",
+                "    (0% потерь)",
+                "Приблизительное время приема-передачи в мс:",
+                "    Минимальное = 0мсек, Максимальное = 0 мсек, Среднее = 0 мсек"
+            });
+
+            var r = PingExeParser.Parse(russian);
+
+            if (!r.Parsed) throw new InvalidOperationException("Русский вывод не разобрался");
+            if (r.Sent != 3) throw new InvalidOperationException("Отправлено разобрано неверно: " + r.Sent);
+            if (r.Received != 3) throw new InvalidOperationException("Получено разобрано неверно: " + r.Received);
+
+            if (!r.HasTimes)
+                throw new InvalidOperationException(
+                    "Времена ответов не разобрались — программа снова уйдёт на TCP-замер и придумает джиттер");
+
+            if (r.TimesMs.Count != 3)
+                throw new InvalidOperationException("Времён должно быть 3, а разобрано " + r.TimesMs.Count);
+
+            // «меньше миллисекунды» — это не ноль и не единица. Ставим половину:
+            // тогда в расчёте разброса нет ложного дрожания.
+            foreach (var time in r.TimesMs)
+            {
+                if (time > 0.5)
+                    throw new InvalidOperationException(
+                        "«время<1мс» разобрано как " + time + " мс — это завышает задержку");
+            }
+
+            // 2. Английский вывод с обычными временами.
+            var english = string.Join("\n", new[]
+            {
+                "Pinging 1.1.1.1 with 32 bytes of data:",
+                "Reply from 1.1.1.1: bytes=32 time=29ms TTL=57",
+                "Reply from 1.1.1.1: bytes=32 time=31ms TTL=57",
+                "Reply from 1.1.1.1: bytes=32 time=30ms TTL=57",
+                "Packets: Sent = 3, Received = 3, Lost = 0 (0% loss),"
+            });
+
+            var e = PingExeParser.Parse(english);
+
+            if (!e.HasTimes || e.TimesMs.Count != 3)
+                throw new InvalidOperationException("Английский вывод: времён " + e.TimesMs.Count + " вместо 3");
+
+            if (e.TimesMs[0] != 29 || e.TimesMs[1] != 31 || e.TimesMs[2] != 30)
+                throw new InvalidOperationException("Времена разобраны неверно: " + string.Join(", ", e.TimesMs));
+
+            // 3. Полная потеря: времён нет, но потери видны.
+            var lost = string.Join("\n", new[]
+            {
+                "Pinging 192.168.31.1 with 32 bytes of data:",
+                "Request timed out.",
+                "Request timed out.",
+                "Packets: Sent = 2, Received = 0, Lost = 2 (100% loss),"
+            });
+
+            var l = PingExeParser.Parse(lost);
+
+            if (!l.Parsed) throw new InvalidOperationException("Вывод со 100% потерь не разобрался");
+            if (l.Received != 0) throw new InvalidOperationException("Получено должно быть 0, а разобрано " + l.Received);
+
+            if (l.HasTimes)
+                throw new InvalidOperationException("При полной потере времён быть не должно");
+
+            // 4. Пустой вывод не должен ломать разбор.
+            var empty = PingExeParser.Parse(string.Empty);
+
+            if (empty.Parsed)
+                throw new InvalidOperationException("Пустой вывод не должен считаться разобранным");
+        });
         RunTest(results, "Диагностика на этой машине выполняется и заполнена", () =>
         {
             var context = new DiagnosticContext { IsAdministrator = true, ProbeSeconds = 5 };

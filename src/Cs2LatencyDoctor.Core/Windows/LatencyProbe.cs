@@ -42,30 +42,93 @@ public static class PingExeParser
     /// <summary>Что удалось узнать из вывода ping.exe.</summary>
     /// <param name="Sent">Сколько пакетов отправлено. 0 — не удалось узнать.</param>
     /// <param name="Received">Сколько пришло. 0 — не удалось узнать.</param>
-    public readonly record struct Result(int Sent, int Received)
+    /// <param name="TimesMs">
+    /// Время каждого ответа в миллисекундах. Пусто, если вывод не разобрался:
+    /// тогда известны только потери, а о задержке судить нельзя.
+    /// </param>
+    public readonly record struct Result(int Sent, int Received, IReadOnlyList<double> TimesMs)
     {
         public bool Parsed => Sent > 0;
+
+        /// <summary>Известны ли времена ответов, а не только потери.</summary>
+        public bool HasTimes => TimesMs.Count > 0;
     }
 
     public static Result Parse(string output)
     {
-        if (string.IsNullOrWhiteSpace(output)) return new Result(0, 0);
+        if (string.IsNullOrWhiteSpace(output)) return new Result(0, 0, Array.Empty<double>());
 
         var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+        var times = new List<double>();
+        var sent = 0;
+        var received = 0;
 
         foreach (var raw in lines)
         {
             var line = raw.Trim();
 
+            // Время ответа: «time<1ms», «time=29ms», «время<1мс», «время=29мс».
+            //
+            // Случай «<1» важен отдельно: на быстрых каналах и до роутера Windows
+            // всегда пишет «меньше миллисекунды». Без его разбора задержка до роутера
+            // выглядела неизвестной, и программа переходила на TCP-замер, который
+            // добавлял собственное дрожание в 1–3 мс — то есть придумывал проблему,
+            // которой нет.
+            var time = ParseTimeMs(line);
+            if (time >= 0) times.Add(time);
+
             // Строка итогов: «Packets: Sent = 4, Received = 4, Lost = 0 (0% loss)»
             // или «Пакетов: отправлено = 4, получено = 4, потеряно = 0 (0% потерь)».
-            var sent = FindNumberAfter(line, "Sent", "отправлено");
-            var received = FindNumberAfter(line, "Received", "получено");
+            var sentHere = FindNumberAfter(line, "Sent", "отправлено");
+            var receivedHere = FindNumberAfter(line, "Received", "получено");
 
-            if (sent > 0 && received >= 0) return new Result(sent, received);
+            if (sentHere > 0 && receivedHere >= 0)
+            {
+                sent = sentHere;
+                received = receivedHere;
+            }
         }
 
-        return new Result(0, 0);
+        // Если строку итогов не нашли, но ответы есть — считаем по ним: это лучше,
+        // чем объявить замер неудачным.
+        if (sent == 0 && times.Count > 0)
+        {
+            sent = times.Count;
+            received = times.Count;
+        }
+
+        return new Result(sent, received, times);
+    }
+
+    /// <summary>
+    /// Время ответа из строки. Возвращает -1, если строку разобрать не удалось.
+    ///
+    /// «time&lt;1ms» — это не «ноль», а «меньше миллисекунды». Возвращаем 0.5:
+    /// так в расчёте джиттера не появляется ложный разброс, но и утверждения
+    /// «ровно ноль» мы не делаем.
+    /// </summary>
+    private static double ParseTimeMs(string line)
+    {
+        foreach (var marker in new[] { "time<", "time=", "время<", "время=" })
+        {
+            var index = line.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (index < 0) continue;
+
+            var less = marker.EndsWith('<');
+
+            var rest = line[(index + marker.Length)..];
+
+            var digits = new string(rest.SkipWhile(c => !char.IsDigit(c)).TakeWhile(char.IsDigit).ToArray());
+
+            if (digits.Length == 0) continue;
+
+            if (!double.TryParse(digits, out var value)) continue;
+
+            return less ? 0.5 : value;
+        }
+
+        return -1;
     }
 
     /// <summary>
@@ -220,15 +283,27 @@ public static class LatencyProbe
 
         onTick?.Invoke(parsed.Sent, parsed.Sent);
 
+        // Времена ответов есть — считаем по ним всё, что нужно: медиану, разброс,
+        // всплески. Раньше здесь стояли нули и подпись «время недоступно», и
+        // вызывающая сторона уходила на TCP-замер. А TCP-подключение добавляет
+        // к задержке собственное дрожание в 1–3 мс: на быстром канале программа
+        // показывала джиттер до роутера 2 мс там, где его нет вовсе.
+        if (parsed.HasTimes)
+        {
+            return Build(target, parsed.Sent, new List<double>(parsed.TimesMs), spikeThresholdMs, ProbeMethod.PingExe) with
+            {
+                Received = parsed.Received,
+                Detail = "через ping.exe: время ответа с точностью до миллисекунды"
+            };
+        }
+
         return new LatencyProbeResult
         {
             Target = target,
             Method = ProbeMethod.PingExe,
             Sent = parsed.Sent,
             Received = parsed.Received,
-            // Времён нет: ping.exe их отдаёт в текстовом виде с точностью до миллисекунды,
-            // и на быстрых каналах они округляются до нуля. Показывать ноль как медиану
-            // означало бы врать о задержке, поэтому оставляем нули и говорим словами.
+            // Времён нет: видно только потери, о задержке судить нельзя.
             SpikeThresholdMs = spikeThresholdMs,
             Detail = "через ping.exe: видны только потери, время ответа недоступно"
         };
