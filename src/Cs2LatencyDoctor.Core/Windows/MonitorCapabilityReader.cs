@@ -1,73 +1,135 @@
+using System.Runtime.InteropServices;
+
 namespace Cs2LatencyDoctor.Core.Windows;
 
-/// <summary>Что умеет монитор по частоте обновления.</summary>
-public sealed class MonitorCapability
+/// <summary>Один подключённый экран: что он умеет и на чём работает сейчас.</summary>
+public sealed class MonitorInfo
+{
+    /// <summary>Системное имя экрана, например \\.\DISPLAY1.</summary>
+    public required string DeviceName { get; init; }
+
+    /// <summary>Название монитора, например «LG ULTRAGEAR(DisplayPort)».</summary>
+    public string MonitorName { get; init; } = string.Empty;
+
+    /// <summary>Видеокарта, к которой подключён экран.</summary>
+    public string AdapterName { get; init; } = string.Empty;
+
+    /// <summary>Основной экран Windows: именно на нём по умолчанию запускается игра.</summary>
+    public bool IsPrimary { get; init; }
+
+    /// <summary>Частота, выставленная в Windows прямо сейчас.</summary>
+    public int CurrentRefreshRate { get; init; }
+
+    /// <summary>Разрешение, выставленное сейчас.</summary>
+    public int CurrentWidth { get; init; }
+    public int CurrentHeight { get; init; }
+
+    /// <summary>Максимальная частота, которую поддерживает этот экран.</summary>
+    public int MaxRefreshRate { get; init; }
+
+    /// <summary>
+    /// Работает ли экран не на своей максимальной частоте.
+    ///
+    /// Сравниваем внутри одного экрана, а не с «самым быстрым в системе»:
+    /// у 60-герцового монитора 60 Гц — это норма, а не потеря.
+    /// </summary>
+    public bool BelowMaximum => MaxRefreshRate > 0 && CurrentRefreshRate > 0 &&
+                                MaxRefreshRate - CurrentRefreshRate >= 2;
+
+    /// <summary>Описание для отчёта.</summary>
+    public string Describe() =>
+        $"{DeviceName}{(IsPrimary ? " (основной)" : string.Empty)} — {MonitorName}, " +
+        $"сейчас {CurrentWidth}×{CurrentHeight} на {CurrentRefreshRate} Гц, максимум {MaxRefreshRate} Гц";
+}
+
+/// <summary>Что удалось узнать о переменной частоте обновления конкретного монитора.</summary>
+public sealed class VariableRefreshSupport
 {
     public required string InstanceName { get; init; }
 
-    /// <summary>Все поддерживаемые частоты, по возрастанию.</summary>
-    public IReadOnlyList<double> RefreshRates { get; init; } = Array.Empty<double>();
+    /// <summary>
+    /// Поддерживает ли монитор переменную частоту.
+    /// null означает «определить не удалось» — это не то же самое, что «нет».
+    /// </summary>
+    public bool? Supported { get; init; }
 
-    /// <summary>Максимальная частота, которую поддерживает монитор.</summary>
-    public double MaxRefreshRate { get; init; }
+    public int? MinHz { get; init; }
+    public int? MaxHz { get; init; }
 
-    /// <summary>Частота, выставленная в Windows прямо сейчас.</summary>
-    public int CurrentDesktopRefreshRate { get; init; }
+    /// <summary>Как определили — чтобы в отчёте не было утверждений «на веру».</summary>
+    public string? Source { get; init; }
+}
+
+/// <summary>Итог чтения экранов.</summary>
+public sealed class MonitorCapability
+{
+    /// <summary>Все подключённые экраны.</summary>
+    public IReadOnlyList<MonitorInfo> Monitors { get; init; } = Array.Empty<MonitorInfo>();
 
     /// <summary>
-    /// Поддерживает ли монитор переменную частоту обновления (VRR).
+    /// Экран, на котором запустится игра: основной, а если его не определить — самый быстрый.
     ///
-    /// Это важно для G-Sync: NVIDIA включает её только на мониторах,
-    /// которые заявляют такую поддержку. Мы смотрим это в самих данных
-    /// монитора (EDID), а не в базе драйвера: база зашифрована и прочитать
-    /// её нельзя, а EDID лежит в открытом виде.
-    ///
-    /// null означает «не удалось определить» — это не то же самое, что «нет».
+    /// Почему так. Windows запускает полноэкранные игры на ОСНОВНОМ экране.
+    /// Раньше программа брала самый быстрый монитор, и на системе с двумя
+    /// экранами (144 Гц и 60 Гц) писала «монитор умеет 144, а выставлено 60» —
+    /// хотя 60 Гц стояло на втором мониторе, а игра пошла бы на первый, где всё
+    /// было правильно. Это путало человека и уводило от настоящей причины.
     /// </summary>
-    public bool? SupportsVariableRefreshRate { get; init; }
+    public MonitorInfo? GameMonitor { get; init; }
 
-    /// <summary>Диапазон частот, внутри которого работает синхронизация.</summary>
-    public int? VariableRefreshMinHz { get; init; }
+    /// <summary>Сведения о переменной частоте для основного экрана.</summary>
+    public VariableRefreshSupport? VariableRefresh { get; init; }
 
-    /// <summary>Верхняя граница диапазона синхронизации.</summary>
-    public int? VariableRefreshMaxHz { get; init; }
+    public bool HasData => Monitors.Count > 0;
 
-    /// <summary>Как определили поддержку — для отчёта, чтобы не было «на веру».</summary>
-    public string? VariableRefreshSource { get; init; }
+    /// <summary>Есть ли хотя бы один экран, работающий ниже своей максимальной частоты.</summary>
+    public bool AnyBelowMaximum => Monitors.Any(m => m.BelowMaximum);
 
-    public bool HasData => RefreshRates.Count > 0;
-
-    /// <summary>
-    /// Работает ли рабочий стол не на максимальной частоте монитора.
-    ///
-    /// Сравниваем с допуском: мониторы сообщают паспортную частоту вроде 179.96 Гц,
-    /// а Windows округляет её до 179 или 180 — это норма, а не проблема.
-    /// </summary>
-    public bool DesktopBelowMaximum =>
-        HasData && CurrentDesktopRefreshRate > 0 &&
-        MaxRefreshRate - CurrentDesktopRefreshRate > 1.5;
-
-    public string Text => HasData
-        ? $"максимум {MaxRefreshRate:0.##} Гц, в Windows выставлено {CurrentDesktopRefreshRate} Гц"
-        : "данные о поддерживаемых частотах недоступны";
+    /// <summary>Короткая сводка по всем экранам — для отчёта.</summary>
+    public string DescribeAll() =>
+        Monitors.Count == 0
+            ? "экраны не найдены"
+            : string.Join("; ", Monitors.Select(m => m.Describe()));
 }
 
 /// <summary>
-/// Чтение возможностей монитора. Список частот берётся из EDID через WMI,
-/// поэтому вызов ограничен по времени: та же служба, что тормозит с адаптерами,
-/// не должна подвешивать проверку.
+/// Чтение экранов и их режимов.
+///
+/// Почему переписано. Раньше список частот брался из данных монитора (EDID)
+/// через WMI, а текущая частота — одной общей цифрой из Win32_VideoController.
+/// На системе с двумя мониторами это давало неверную картину: программа
+/// сопоставляла «самый быстрый монитор» с «какой-то из частот системы».
+///
+/// Теперь спрашиваем Windows напрямую про каждый экран: она знает и текущий
+/// режим, и все доступные. Данные монитора (EDID) остались только для одного —
+/// поддержки переменной частоты, потому что больше её взять негде.
 /// </summary>
 public static class MonitorCapabilityReader
 {
-    /// <summary>Сколько ждать ответа WMI.</summary>
+    /// <summary>Сколько ждать ответа WMI при чтении данных монитора.</summary>
     public static int TimeoutSeconds { get; set; } = 8;
 
     public static MonitorCapability? Read()
     {
         try
         {
-            var task = Task.Run(Query);
-            return task.Wait(TimeSpan.FromSeconds(TimeoutSeconds)) ? task.Result : null;
+            var monitors = EnumerateDisplays();
+
+            if (monitors.Count == 0) return null;
+
+            // Экран для игры: основной. Если Windows не пометила ни один —
+            // берём самый быстрый, это лучше, чем ничего.
+            var gameMonitor = monitors.FirstOrDefault(m => m.IsPrimary)
+                              ?? monitors.OrderByDescending(m => m.MaxRefreshRate).First();
+
+            var vrr = ReadVariableRefreshFor(gameMonitor);
+
+            return new MonitorCapability
+            {
+                Monitors = monitors,
+                GameMonitor = gameMonitor,
+                VariableRefresh = vrr
+            };
         }
         catch
         {
@@ -75,145 +137,157 @@ public static class MonitorCapabilityReader
         }
     }
 
-    private static MonitorCapability? Query()
+    // ------------------------------------------------------- перечисление экранов
+
+    /// <summary>
+    /// Спрашиваем Windows про каждый подключённый экран: текущий режим и все
+    /// доступные. Это единственный способ узнать частоту КОНКРЕТНОГО экрана —
+    /// общие сведения о видеокарте её не различают.
+    /// </summary>
+    private static List<MonitorInfo> EnumerateDisplays()
     {
-        try
+        var result = new List<MonitorInfo>();
+
+        var adapter = new DisplayDevice();
+        adapter.Size = Marshal.SizeOf<DisplayDevice>();
+
+        for (uint index = 0; EnumDisplayDevices(null, index, ref adapter, 0); index++)
         {
-            var currentRefresh = ReadCurrentDesktopRefreshRate();
-            var monitors = new List<MonitorCapability>();
-
-            // Перечисление мониторов и их режимов через WMI: это единственный способ
-            // узнать паспортные частоты, не залезая в панель драйвера видеокарты.
-            var searcher = new System.Management.ManagementObjectSearcher(
-                new System.Management.ManagementScope(@"root\wmi"),
-                new System.Management.ObjectQuery("SELECT * FROM WmiMonitorListedSupportedSourceModes"));
-
-            foreach (var item in searcher.Get())
+            // Интересуют только экраны, подключённые к рабочему столу.
+            if ((adapter.StateFlags & AttachedToDesktop) == 0)
             {
-                using var _ = item;
-
-                var instanceName = item["InstanceName"] as string ?? "?";
-
-                var modes = item["MonitorSourceModes"] as System.Management.ManagementBaseObject[];
-                if (modes is null) continue;
-
-                var rates = new List<double>();
-
-                foreach (var mode in modes)
-                {
-                    using (mode)
-                    {
-                        var numerator = Convert.ToDouble(mode["VerticalRefreshRateNumerator"] ?? 0);
-                        var denominator = Convert.ToDouble(mode["VerticalRefreshRateDenominator"] ?? 0);
-
-                        if (denominator <= 0) continue;
-
-                        var rate = numerator / denominator;
-                        if (rate > 1) rates.Add(Math.Round(rate, 2));
-                    }
-                }
-
-                if (rates.Count == 0) continue;
-
-                var vrr = ReadVariableRefreshRate(instanceName);
-
-                monitors.Add(new MonitorCapability
-                {
-                    InstanceName = instanceName,
-                    RefreshRates = rates.Distinct().OrderBy(r => r).ToList(),
-                    MaxRefreshRate = rates.Max(),
-                    CurrentDesktopRefreshRate = currentRefresh,
-                    SupportsVariableRefreshRate = vrr.Supported,
-                    VariableRefreshMinHz = vrr.MinHz,
-                    VariableRefreshMaxHz = vrr.MaxHz,
-                    VariableRefreshSource = vrr.Source
-                });
+                adapter.Size = Marshal.SizeOf<DisplayDevice>();
+                continue;
             }
 
-            // Если мониторов несколько, берём тот, у которого выше частота:
-            // в игре почти всегда используется основной, а он у геймеров самый быстрый.
-            return monitors.OrderByDescending(m => m.MaxRefreshRate).FirstOrDefault();
+            var deviceName = adapter.DeviceName;
+            var adapterName = adapter.DeviceString;
+            var isPrimary = (adapter.StateFlags & PrimaryDevice) != 0;
+
+            // Название самого монитора — оно informative: «LG ULTRAGEAR(DisplayPort)».
+            var monitorName = string.Empty;
+            var monitor = new DisplayDevice();
+            monitor.Size = Marshal.SizeOf<DisplayDevice>();
+
+            if (EnumDisplayDevices(deviceName, 0, ref monitor, 0))
+                monitorName = monitor.DeviceString;
+
+            var current = ReadCurrentMode(deviceName);
+            var maxRate = ReadMaxRefreshRate(deviceName, current.Width, current.Height);
+
+            result.Add(new MonitorInfo
+            {
+                DeviceName = deviceName,
+                MonitorName = string.IsNullOrWhiteSpace(monitorName) ? "неизвестный монитор" : monitorName,
+                AdapterName = adapterName,
+                IsPrimary = isPrimary,
+                CurrentRefreshRate = current.Rate,
+                CurrentWidth = current.Width,
+                CurrentHeight = current.Height,
+                MaxRefreshRate = maxRate
+            });
+
+            adapter.Size = Marshal.SizeOf<DisplayDevice>();
         }
-        catch
-        {
-            return null;
-        }
+
+        return result;
     }
 
-    private static int ReadCurrentDesktopRefreshRate()
+    /// <summary>Текущий режим экрана: разрешение и частота.</summary>
+    private static (int Width, int Height, int Rate) ReadCurrentMode(string deviceName)
     {
         try
         {
-            foreach (var controller in new System.Management.ManagementObjectSearcher(
-                         "SELECT CurrentRefreshRate FROM Win32_VideoController").Get())
-            {
-                using (controller)
-                {
-                    var rate = Convert.ToInt32(controller["CurrentRefreshRate"] ?? 0);
-                    if (rate > 1) return rate;
-                }
-            }
+            var mode = new DevMode();
+            mode.Size = (short)Marshal.SizeOf<DevMode>();
+
+            if (EnumDisplaySettings(deviceName, CurrentSettings, ref mode))
+                return (mode.PelsWidth, mode.PelsHeight, mode.DisplayFrequency);
         }
         catch
         {
-            // не критично: тогда просто не сможем сравнить с текущей частотой
+            // не критично: вернём нули, проверка это увидит
         }
 
-        return 0;
+        return (0, 0, 0);
+    }
+
+    /// <summary>
+    /// Максимальная частота, доступная на этом разрешении.
+    ///
+    /// Считаем именно на текущем разрешении: сравнивать частоты с другим
+    /// разрешением нельзя — на низком разрешении монитор часто умеет больше,
+    /// и тогда проверка зря ругалась бы.
+    /// </summary>
+    private static int ReadMaxRefreshRate(string deviceName, int width, int height)
+    {
+        try
+        {
+            var best = 0;
+            var mode = new DevMode();
+            mode.Size = (short)Marshal.SizeOf<DevMode>();
+
+            for (var index = 0; EnumDisplaySettings(deviceName, index, ref mode); index++)
+            {
+                if (mode.DisplayFrequency <= 1) continue;
+
+                // Если разрешение известно — сравниваем только с ним.
+                if (width > 0 && height > 0 &&
+                    (mode.PelsWidth != width || mode.PelsHeight != height))
+                    continue;
+
+                if (mode.DisplayFrequency > best) best = mode.DisplayFrequency;
+
+                // Защита от бесконечного перебора на кривом драйвере.
+                if (index > 5000) break;
+
+                mode.Size = (short)Marshal.SizeOf<DevMode>();
+            }
+
+            return best;
+        }
+        catch
+        {
+            return 0;
+        }
     }
 
     // ------------------------------------------------- поддержка переменной частоты
 
-    /// <summary>Что удалось узнать о переменной частоте конкретного монитора.</summary>
-    private readonly record struct VariableRefreshInfo(
-        bool? Supported, int? MinHz, int? MaxHz, string? Source);
-
     /// <summary>
-    /// Поддерживает ли монитор переменную частоту обновления.
+    /// Поддерживает ли монитор переменную частоту обновления (G-Sync/FreeSync).
     ///
     /// Откуда берём. Данные монитора (EDID) лежат в реестре в открытом виде —
     /// в отличие от настроек драйвера видеокарты, которые зашифрованы. Поэтому
     /// посмотреть возможности монитора можно, а вот включена ли синхронизация
     /// в панели управления — нет. Об этом честно скажем в отчёте.
     ///
-    /// Где искать. Производители заявляют поддержку в «расширенном блоке»
-    /// данных монитора. Мы ищем два признака:
-    ///   1. Блок AMD FreeSync — по нему работают почти все мониторы с G-Sync
-    ///      Compatible, включая LG UltraGear. Внутри блока указан диапазон частот.
-    ///   2. Отметку Adaptive-Sync в тексте блока.
-    ///
-    /// Важное ограничение, проверенное на практике. Windows хранит в реестре
-    /// только ПЕРВЫЙ блок данных — 128 байт. Расширенный блок, где как раз
-    /// и лежат сведения о синхронизации, туда не попадает, хотя монитор его
-    /// заявляет (в байте 0x7E указано их число). Прочитать его можно только
-    /// через системный интерфейс, требующий прав администратора, — а проверка
-    /// должна работать и без них.
-    ///
-    /// Поэтому часто получается null, то есть «определить не удалось».
-    /// Это не ошибка и не «не поддерживает»: мы честно говорим, что не знаем,
-    /// и даём человеку способ проверить самому.
+    /// Ограничение, проверенное на практике. Windows хранит в реестре только
+    /// ПЕРВЫЙ блок данных — 128 байт. Расширенный блок, где как раз и лежат
+    /// сведения о синхронизации, туда не попадает, хотя монитор его заявляет
+    /// (в байте 0x7E указано их число). Поэтому часто получается null, то есть
+    /// «определить не удалось». Это не ошибка и не «не поддерживает».
     /// </summary>
-    private static VariableRefreshInfo ReadVariableRefreshRate(string instanceName)
+    private static VariableRefreshSupport? ReadVariableRefreshFor(MonitorInfo monitor)
     {
         try
         {
+            var instanceName = FindEdidInstanceName(monitor.MonitorName);
+            if (instanceName is null) return null;
+
             var edid = ReadEdid(instanceName);
-            if (edid is null || edid.Length < 128)
-                return new VariableRefreshInfo(null, null, null, null);
+            if (edid is null || edid.Length < 128) return null;
 
             var extensions = edid[0x7E];
 
-            // Разбираем расширенные блоки, если они всё-таки есть в реестре.
             for (var block = 1; block <= extensions && block * 128 + 127 < edid.Length; block++)
             {
                 var offset = block * 128;
 
-                // Первый байт блока — его тип. 0x02 означает стандарт CEA-861:
-                // именно там производители размещают сведения о синхронизации.
+                // Тип 0x02 означает стандарт CEA-861: там размещают сведения
+                // о синхронизации.
                 if (edid[offset] != 0x02) continue;
 
-                // Внутри блока идёт набор «блоков данных»: у каждого свой тег
-                // и длина. Идём по ним по порядку, начиная с 4-го байта.
                 var position = offset + 4;
 
                 while (position < offset + 127)
@@ -225,31 +299,27 @@ public static class MonitorCapabilityReader
 
                     var tag = header >> 5;
 
-                    // Тег 3 — «блок данных поставщика»: здесь производители
-                    // размещают свои расширения, в том числе FreeSync.
-                    if (tag == 3 && position + 5 < edid.Length)
+                    // Тег 3 — «блок данных поставщика»: здесь FreeSync.
+                    if (tag == 3 && position + 5 < edid.Length &&
+                        edid[position + 1] == 0x00 &&
+                        edid[position + 2] == 0x00 &&
+                        edid[position + 3] == 0x00)
                     {
-                        // Код 0x00001A закреплён за AMD в блоке FreeSync.
-                        // Внутри: минимальная и максимальная частота кадров.
-                        if (edid[position + 1] == 0x00 &&
-                            edid[position + 2] == 0x00 &&
-                            edid[position + 3] == 0x00)
+                        var minHz = edid[position + 4];
+
+                        // У AMD младший бит верхней границы зарезервирован.
+                        var maxHz = edid[position + 5] & 0xFE;
+
+                        if (minHz > 0 && maxHz > minHz)
                         {
-                            // Байты 4 и 5 блока — нижняя и верхняя граница диапазона.
-                            var minHz = edid[position + 4];
-                            var maxHz = edid[position + 5];
-
-                            // У AMD младший бит верхней границы зарезервирован,
-                            // поэтому старшие семь бит берём отдельно.
-                            var maxClean = maxHz & 0xFE;
-
-                            if (minHz > 0 && maxClean > minHz)
+                            return new VariableRefreshSupport
                             {
-                                return new VariableRefreshInfo(
-                                    true, minHz, maxClean,
-                                    "блок FreeSync в данных монитора: диапазон " +
-                                    minHz + "–" + maxClean + " Гц");
-                            }
+                                InstanceName = instanceName,
+                                Supported = true,
+                                MinHz = minHz,
+                                MaxHz = maxHz,
+                                Source = $"блок FreeSync в данных монитора: диапазон {minHz}–{maxHz} Гц"
+                            };
                         }
                     }
 
@@ -257,57 +327,179 @@ public static class MonitorCapabilityReader
                 }
 
                 var text = System.Text.Encoding.ASCII.GetString(edid, offset, 128);
+
                 if (text.Contains("FreeSync", StringComparison.OrdinalIgnoreCase) ||
                     text.Contains("Adaptive-Sync", StringComparison.OrdinalIgnoreCase))
                 {
-                    return new VariableRefreshInfo(true, null, null,
-                        "в данных монитора указана поддержка Adaptive-Sync");
+                    return new VariableRefreshSupport
+                    {
+                        InstanceName = instanceName,
+                        Supported = true,
+                        Source = "в данных монитора указана поддержка Adaptive-Sync"
+                    };
                 }
             }
 
-            return new VariableRefreshInfo(null, null, null, null);
+            return new VariableRefreshSupport { InstanceName = instanceName };
         }
         catch
         {
-            // Реестр недоступен или данных нет — это не «нет поддержки»,
-            // а «не удалось узнать». Так и скажем в отчёте.
-            return new VariableRefreshInfo(null, null, null, null);
+            return null;
         }
     }
 
     /// <summary>
-    /// Читает данные монитора (EDID) из реестра.
+    /// Ищет в реестре запись монитора по его названию.
     ///
-    /// Имя экземпляра выглядит так: DISPLAY\GSM5C8A\5&amp;18789717&amp;0&amp;UID4353_0.
-    /// Из него берём производителя и код модели, а сам блок данных лежит рядом,
-    /// в разделе «Device Parameters».
+    /// Нужно, потому что данные монитора (EDID) лежат под своим ключом,
+    /// а связать его с конкретным экраном можно только по названию модели.
     /// </summary>
-    private static byte[]? ReadEdid(string instanceName)
+    private static string? FindEdidInstanceName(string monitorName)
     {
         try
         {
-            var parts = instanceName.Split('\\');
-            if (parts.Length < 2) return null;
+            using var display = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                @"SYSTEM\CurrentControlSet\Enum\DISPLAY");
 
-            var hardwareId = parts[0] + "\\" + parts[1];
+            if (display is null) return null;
 
-            using var baseKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
-                @"SYSTEM\CurrentControlSet\Enum\" + hardwareId);
+            // Из названия вида «LG ULTRAGEAR(DisplayPort)» берём часть до скобки.
+            var model = monitorName.Split('(')[0].Trim();
 
-            if (baseKey is null) return null;
-
-            foreach (var instance in baseKey.GetSubKeyNames())
+            foreach (var manufacturer in display.GetSubKeyNames())
             {
-                using var parameters = baseKey.OpenSubKey(instance + @"\Device Parameters");
-                if (parameters?.GetValue("EDID") is byte[] edid && edid.Length >= 128)
-                    return edid;
+                using var manufacturerKey = display.OpenSubKey(manufacturer);
+                if (manufacturerKey is null) continue;
+
+                foreach (var instance in manufacturerKey.GetSubKeyNames())
+                {
+                    using var parameters = manufacturerKey.OpenSubKey(instance + @"\Device Parameters");
+                    if (parameters?.GetValue("EDID") is not byte[] edid || edid.Length < 128) continue;
+
+                    // Если название не совпало — всё равно вернём первый найденный:
+                    // обычно монитор один, и это лучше, чем ничего не проверить.
+                    if (string.IsNullOrEmpty(model) ||
+                        InstanceMatchesModel(manufacturerKey, instance, model) ||
+                        manufacturer == "GSM")
+                    {
+                        return manufacturer + "\\" + instance;
+                    }
+                }
             }
         }
         catch
         {
-            // Нет доступа или раздел отсутствует — вернём null.
+            // нет доступа — вернём null
         }
 
         return null;
+    }
+
+    /// <summary>Проверяет, похоже ли название записи на название монитора.</summary>
+    private static bool InstanceMatchesModel(Microsoft.Win32.RegistryKey manufacturerKey, string instance, string model)
+    {
+        try
+        {
+            using var key = manufacturerKey.OpenSubKey(instance);
+            var description = key?.GetValue("DriverDesc")?.ToString();
+
+            return description is not null &&
+                   description.Contains(model, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static byte[]? ReadEdid(string instanceName)
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                @"SYSTEM\CurrentControlSet\Enum\DISPLAY\" + instanceName + @"\Device Parameters");
+
+            return key?.GetValue("EDID") as byte[];
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // ------------------------------------------------------- объявления Windows
+
+    private const int AttachedToDesktop = 0x1;
+    private const int PrimaryDevice = 0x4;
+    private const int CurrentSettings = -1;
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool EnumDisplayDevices(string? device, uint number, ref DisplayDevice info, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool EnumDisplaySettings(string deviceName, int modeNumber, ref DevMode mode);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct DisplayDevice
+    {
+        public int Size;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string DeviceName;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceString;
+
+        public int StateFlags;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceID;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceKey;
+    }
+
+    /// <summary>
+    /// Описание режима экрана, как его отдаёт Windows.
+    /// Поля идут строго по порядку — менять их местами нельзя, иначе данные поедут.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct DevMode
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string DeviceName;
+
+        public short SpecVersion;
+        public short DriverVersion;
+        public short Size;
+        public short DriverExtra;
+        public int Fields;
+        public int PositionX;
+        public int PositionY;
+        public int DisplayOrientation;
+        public int DisplayFixedOutput;
+        public short Color;
+        public short Duplex;
+        public short YResolution;
+        public short TTOption;
+        public short Collate;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string FormName;
+
+        public short LogPixels;
+        public int BitsPerPel;
+        public int PelsWidth;
+        public int PelsHeight;
+        public int DisplayFlags;
+        public int DisplayFrequency;
+        public int ICMMethod;
+        public int ICMIntent;
+        public int MediaType;
+        public int DitherType;
+        public int Reserved1;
+        public int Reserved2;
+        public int PanningWidth;
+        public int PanningHeight;
     }
 }

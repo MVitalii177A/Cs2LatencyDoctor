@@ -22,29 +22,41 @@ public sealed class Cs2RefreshRateCheck : IDiagnosticCheck
         context.Progress("Читаю возможности монитора…");
         var monitor = MonitorCapabilityReader.Read();
 
-        if (monitor is null || !monitor.HasData)
+        if (monitor is null || !monitor.HasData || monitor.GameMonitor is null)
         {
             results.Add(CheckResult.Skipped(Id + ".monitor", "Возможности монитора",
-                "Не удалось прочитать список поддерживаемых частот из EDID монитора",
+                "Не удалось прочитать режимы подключённых экранов",
                 NoHelpReason.BlockedBySystem,
-                "Программа не смогла узнать, какие частоты поддерживает монитор: данные EDID " +
-                "недоступны. Что делать: посмотрите частоту вручную — " +
+                "Программа не смогла узнать, какие частоты поддерживают экраны. " +
+                "Что делать: посмотрите частоту вручную — " +
                 "Параметры → Система → Дисплей → Дополнительные параметры дисплея → " +
                 "«Частота обновления». Сравните с тем, что написано в характеристиках монитора. " +
                 "В игре частота задаётся там же, где разрешение: Настройки → Видео."));
             return Task.FromResult<IReadOnlyList<CheckResult>>(results);
         }
 
-        // --- Рабочий стол работает не на максимальной частоте монитора ---
-        if (monitor.DesktopBelowMaximum)
+        var screen = monitor.GameMonitor;
+
+        // --- Экран, на котором запустится игра ---
+        //
+        // Сравниваем частоту с максимумом ЭТОГО экрана, а не с самым быстрым
+        // в системе. У 60-герцового монитора 60 Гц — это норма, а не потеря.
+        // Раньше программа брала самый быстрый монитор и общую частоту системы,
+        // из-за чего на двух экранах (144 Гц и 60 Гц) писала «монитор умеет 144,
+        // а выставлено 60» — хотя игра пошла бы на основной экран, где всё верно.
+        results.Add(CheckResult.Ok(Id + ".monitor", "Подключённые экраны",
+            monitor.DescribeAll()));
+
+        if (screen.BelowMaximum)
         {
             results.Add(CheckResult.Warn(Id + ".desktop", "Частота обновления рабочего стола",
-                $"Монитор умеет {monitor.MaxRefreshRate:0.##} Гц, а в Windows выставлено " +
-                $"{monitor.CurrentDesktopRefreshRate} Гц",
+                $"Экран для игры ({screen.DeviceName}, {screen.MonitorName}) умеет " +
+                $"{screen.MaxRefreshRate} Гц, а в Windows выставлено {screen.CurrentRefreshRate} Гц",
                 "Пока рабочий стол работает на пониженной частоте, игра в полноэкранном режиме " +
                 "тоже получит её: Windows отдаёт игре текущий режим вывода. " +
-                "На 60 Гц задержка между кадрами в три раза больше, чем на 180 — " +
-                "это чувствуется как вязкий прицел.",
+                $"На {screen.CurrentRefreshRate} Гц задержка между кадрами в " +
+                $"{screen.MaxRefreshRate / Math.Max(1, screen.CurrentRefreshRate)} раза больше, " +
+                "чем на максимуме — это чувствуется как вязкий прицел.",
                 new[]
                 {
                     new FixAction("display.refresh.desktop", "Выставить максимальную частоту в Windows",
@@ -53,14 +65,40 @@ public sealed class Cs2RefreshRateCheck : IDiagnosticCheck
                 "Программа не меняет режим вывода: это делается в настройках Windows, и после смены " +
                 "экрана может мигнуть. Что делать: правый щелчок по рабочему столу → " +
                 "«Параметры экрана» → «Дополнительные параметры дисплея» → в списке " +
-                "«Частота обновления» выберите максимальную (у вас " +
-                $"{monitor.MaxRefreshRate:0.##} Гц) → «Сохранить изменения»."));
+                $"«Частота обновления» выберите {screen.MaxRefreshRate} Гц → «Сохранить изменения». " +
+                "Менять надо для того экрана, который помечен как основной: именно на нём " +
+                "запустится игра."));
         }
-        else if (monitor.CurrentDesktopRefreshRate > 0)
+        else if (screen.CurrentRefreshRate > 0)
         {
             results.Add(CheckResult.Ok(Id + ".desktop", "Частота обновления рабочего стола",
-                $"Windows работает на {monitor.CurrentDesktopRefreshRate} Гц, " +
-                $"монитор поддерживает до {monitor.MaxRefreshRate:0.##} Гц"));
+                $"Экран для игры работает на {screen.CurrentRefreshRate} Гц из {screen.MaxRefreshRate} " +
+                "возможных — это максимум"));
+        }
+
+        // --- Если есть другие экраны на пониженной частоте, скажем об этом ---
+        //
+        // Это не ошибка: у второго монитора своя максимальная частота.
+        // Но если человек ждёт от него большего, он должен знать, что происходит.
+        var others = monitor.Monitors.Where(m => !ReferenceEquals(m, screen)).ToList();
+
+        if (others.Count > 0)
+        {
+            var slower = others.Where(m => m.BelowMaximum).ToList();
+
+            results.Add(CheckResult.Info(Id + ".others", "Другие подключённые экраны",
+                string.Join("; ", others.Select(m => m.Describe())),
+                slower.Count > 0
+                    ? "Некоторые экраны работают ниже своей максимальной частоты. " +
+                      "Игра на них не запустится, поэтому на игру это не влияет — " +
+                      "но если вы перенесёте окно игры на такой экран, частота будет ниже."
+                    : null,
+                recommendation: slower.Count > 0
+                    ? "Если хотите поднять частоту и на этих экранах: правый щелчок по рабочему столу → " +
+                      "«Параметры экрана» → выберите нужный экран → «Дополнительные параметры дисплея» → " +
+                      "«Частота обновления». Учтите: у каждого монитора свой максимум, " +
+                      "и 60 Гц для 60-герцового — это норма."
+                    : null));
         }
 
         // --- Что записано в настройках самой игры ---
@@ -86,7 +124,7 @@ public sealed class Cs2RefreshRateCheck : IDiagnosticCheck
         {
             // В файле 0/0 — игра берёт частоту рабочего стола. Это нормально,
             // если рабочий стол уже на максимуме, и опасно, если нет.
-            var desktopOk = !monitor.DesktopBelowMaximum && monitor.CurrentDesktopRefreshRate > 0;
+            var desktopOk = !screen.BelowMaximum && screen.CurrentRefreshRate > 0;
 
             results.Add(new CheckResult
             {
@@ -94,8 +132,8 @@ public sealed class Cs2RefreshRateCheck : IDiagnosticCheck
                 Title = "Частота обновления в CS2",
                 Severity = desktopOk ? Severity.Ok : Severity.Warning,
                 Detail = "Игра не задаёт частоту явно и берёт её из Windows (" +
-                         (monitor.CurrentDesktopRefreshRate > 0
-                             ? $"{monitor.CurrentDesktopRefreshRate} Гц"
+                         (screen.CurrentRefreshRate > 0
+                             ? $"{screen.CurrentRefreshRate} Гц"
                              : "текущий режим") + ")",
                 Why = "CS2 использует ту частоту, которая выставлена в Windows. Это нормально, " +
                       "пока рабочий стол работает на максимуме монитора.",
@@ -112,24 +150,26 @@ public sealed class Cs2RefreshRateCheck : IDiagnosticCheck
             return Task.FromResult<IReadOnlyList<CheckResult>>(results);
         }
 
-        // Частота задана явно — сравниваем с возможностями монитора.
-        if (monitor.HasData && monitor.MaxRefreshRate - gameRate > 1.5)
+        // Частота задана явно — сравниваем с возможностями ЭТОГО экрана.
+        // Игра запускается на основном экране, поэтому и сравнивать надо с ним,
+        // а не с самым быстрым монитором в системе.
+        if (screen.MaxRefreshRate > 0 && screen.MaxRefreshRate - gameRate > 1.5)
         {
             results.Add(CheckResult.Warn(Id + ".game", "Частота обновления в CS2",
-                $"Игра работает на {gameRate:0.##} Гц, монитор поддерживает до " +
-                $"{monitor.MaxRefreshRate:0.##} Гц",
+                $"Игра работает на {gameRate:0.##} Гц, а экран для игры " +
+                $"({screen.MonitorName}) поддерживает до {screen.MaxRefreshRate} Гц",
                 "Каждый кадр на 60 Гц занимает 16.7 мс, на 180 Гц — 5.6 мс. Разница в задержке " +
                 "ввода заметна сразу, и она не лечится ни сетью, ни настройками Windows.",
                 recommendation: "Программа не меняет эту настройку: игра перезапишет файл настроек " +
                 "при выходе, поэтому правка в файле бессмысленна. Что делать: " +
-                "Настройки → Видео → «Частота обновления» → выберите максимум " +
-                $"({monitor.MaxRefreshRate:0.##} Гц). Если в списке нет нужной частоты — сначала " +
+                "Настройки → Видео → «Частота обновления» → выберите " +
+                $"{screen.MaxRefreshRate} Гц. Если в списке нет нужной частоты — сначала " +
                 "выставьте её в Windows: Параметры экрана → Дополнительные параметры дисплея."));
         }
-        else
+        else if (screen.MaxRefreshRate > 0)
         {
             results.Add(CheckResult.Ok(Id + ".game", "Частота обновления в CS2",
-                $"Игра работает на {gameRate:0.##} Гц — это максимум монитора"));
+                $"Игра работает на {gameRate:0.##} Гц — это максимум экрана"));
         }
 
         return Task.FromResult<IReadOnlyList<CheckResult>>(results);

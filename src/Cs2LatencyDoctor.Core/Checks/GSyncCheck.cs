@@ -40,22 +40,51 @@ public sealed class GSyncCheck : IDiagnosticCheck
 
         var monitor = MonitorCapabilityReader.Read();
 
-        if (monitor is null)
+        if (monitor is null || !monitor.HasData || monitor.GameMonitor is null)
         {
             results.Add(CheckResult.Skipped(Id, Title,
-                "Не удалось прочитать данные монитора",
+                "Не удалось прочитать сведения о подключённых экранах",
                 NoHelpReason.NotEnoughData,
-                "Программа не смогла получить сведения о мониторе, поэтому не может сказать, " +
-                "поддерживает ли он переменную синхронизацию. " +
+                "Программа не смогла получить сведения об экранах, поэтому не может сказать, " +
+                "поддерживает ли монитор переменную синхронизацию. " +
                 "Что делать: проверьте вручную — откройте панель управления NVIDIA " +
                 "(правый щелчок по рабочему столу → «Панель управления NVIDIA»), раздел " +
                 "«Дисплей» → «Настройка G-SYNC». Если этот раздел есть и галочка ставится — " +
                 "поддержка есть."));
+
+            results.Add(DriverNote(Id));
             return Task.FromResult<IReadOnlyList<CheckResult>>(results);
         }
 
+        var screen = monitor.GameMonitor;
+        var vrr = monitor.VariableRefresh;
+
         // --- поддержка со стороны монитора ---
-        var supports = monitor.SupportsVariableRefreshRate;
+        var supports = vrr?.Supported;
+
+        if (supports is null)
+        {
+            // Определить не удалось — это не «нет поддержки». Говорим как есть
+            // и объясняем причину, чтобы человек не гадал.
+            results.Add(CheckResult.Info(Id, Title,
+                "Поддержку переменной частоты определить не удалось. " +
+                $"Экран для игры: {screen.MonitorName}, {screen.CurrentRefreshRate} Гц из " +
+                $"{screen.MaxRefreshRate} возможных",
+                "Сведения о синхронизации производитель размещает в расширенном блоке данных " +
+                "монитора. Windows хранит в реестре только первый блок (128 байт), а расширенный " +
+                "туда не попадает — его можно прочитать лишь с правами администратора. " +
+                "Поэтому программа не утверждает ни «есть», ни «нет».",
+                recommendation: "Если игра показывает окно «ваш дисплей поддерживает NVIDIA G-Sync, " +
+                                "но сейчас она отключена» — проверьте два места. Первое: панель " +
+                                "управления NVIDIA → «Дисплей» → «Настройка G-SYNC» (галочка " +
+                                "«Включить G-SYNC», режим «для оконного и полноэкранного», затем " +
+                                "«Применить»). Второе: меню самого монитора (кнопки на корпусе) → " +
+                                "включить Adaptive-Sync или FreeSync. Без второго пункта первый не " +
+                                "заработает: на мониторах LG синхронизация работает через FreeSync."));
+
+            results.Add(DriverNote(Id));
+            return Task.FromResult<IReadOnlyList<CheckResult>>(results);
+        }
 
         if (supports == false)
         {
@@ -67,31 +96,20 @@ public sealed class GSyncCheck : IDiagnosticCheck
                 "и делать ничего не нужно: синхронизация просто не заработает.",
                 recommendation: "Проверить можно так: панель управления NVIDIA → «Дисплей» → " +
                                 "«Настройка G-SYNC». Если раздела нет — монитор не поддерживает."));
+
+            results.Add(DriverNote(Id));
             return Task.FromResult<IReadOnlyList<CheckResult>>(results);
         }
 
-        var monitorText = supports == true
-            ? "Монитор поддерживает переменную частоту" +
-              (monitor.VariableRefreshMinHz is not null && monitor.VariableRefreshMaxHz is not null
-                  ? $": диапазон {monitor.VariableRefreshMinHz}–{monitor.VariableRefreshMaxHz} Гц"
-                  : string.Empty)
-            : "Поддержку переменной частоты определить не удалось";
+        var monitorText = "Монитор поддерживает переменную частоту" +
+                          (vrr?.MinHz is not null && vrr.MaxHz is not null
+                              ? $": диапазон {vrr.MinHz}–{vrr.MaxHz} Гц"
+                              : string.Empty);
 
-        // Что мы знаем о мониторе наверняка: паспортные частоты из его данных.
-        // Это полезно само по себе и не зависит от того, удалось ли прочитать
-        // расширенный блок со сведениями о синхронизации.
-        var monitorFacts = monitor.HasData
-            ? $"Монитор: до {monitor.MaxRefreshRate:0.##} Гц, в Windows выставлено " +
-              $"{monitor.CurrentDesktopRefreshRate} Гц."
-            : null;
-
-        // Почему не удалось определить поддержку — говорим прямо, а не молчим.
-        var whyUnknown = supports is null
-            ? "Причина: сведения о синхронизации производитель размещает в расширенном блоке " +
-              "данных монитора. Windows хранит в реестре только первый блок (128 байт), " +
-              "а расширенный туда не попадает — его можно прочитать лишь с правами " +
-              "администратора. Поэтому программа не утверждает ни «есть», ни «нет»."
-            : null;
+        // Что мы знаем об экране наверняка: его частоты. Это полезно само по себе
+        // и не зависит от того, удалось ли прочитать блок со сведениями о синхронизации.
+        var monitorFacts = $"Экран для игры: {screen.MonitorName}, " +
+                           $"{screen.CurrentRefreshRate} Гц из {screen.MaxRefreshRate} возможных.";
 
         // --- настройки игры, которые мешают синхронизации ---
         var install = context.GetCs2Installation();
@@ -111,10 +129,15 @@ public sealed class GSyncCheck : IDiagnosticCheck
         }
 
         var metrics = new Dictionary<string, double>();
-        if (monitor.VariableRefreshMaxHz is not null)
-            metrics["gsync.monitor.maxhz"] = monitor.VariableRefreshMaxHz.Value;
-        if (monitor.VariableRefreshMinHz is not null)
-            metrics["gsync.monitor.minhz"] = monitor.VariableRefreshMinHz.Value;
+
+        if (vrr?.MaxHz is not null)
+            metrics["gsync.monitor.maxhz"] = vrr.MaxHz.Value;
+        if (vrr?.MinHz is not null)
+            metrics["gsync.monitor.minhz"] = vrr.MinHz.Value;
+
+        // Частоты самого экрана — они пригодятся в отчёте «до и после».
+        metrics["monitor.current.hz"] = screen.CurrentRefreshRate;
+        metrics["monitor.max.hz"] = screen.MaxRefreshRate;
 
         // --- итог ---
         if (blockers.Count > 0)
@@ -124,13 +147,12 @@ public sealed class GSyncCheck : IDiagnosticCheck
                 Id = Id,
                 Title = Title,
                 Severity = Severity.Warning,
-                Detail = monitorText + ". " + (monitorFacts is not null ? monitorFacts + " " : string.Empty) +
+                Detail = monitorText + ". " + monitorFacts + " " +
                          "Но настройки игры мешают: " + string.Join("; ", blockers) + ".",
                 Why = "Переменная синхронизация убирает разрывы картинки и рывки, не добавляя " +
                       "задержки — в отличие от обычной вертикальной синхронизации. " +
                       "Чтобы она работала, игра должна идти в полноэкранном режиме, а " +
-                      "вертикальная синхронизация внутри игры должна быть выключена." +
-                      (whyUnknown is not null ? " " + whyUnknown : string.Empty),
+                      "вертикальная синхронизация внутри игры должна быть выключена.",
                 Recommendation = "Что сделать: " + (video?.Fullscreen == 1 && video?.NoWindowBorder == 1
                                       ? "в игре переключите Настройки → Видео → Режим экрана на «Полноэкранный». "
                                       : string.Empty) +
@@ -157,13 +179,12 @@ public sealed class GSyncCheck : IDiagnosticCheck
                 Id = Id,
                 Title = Title,
                 Severity = Severity.Info,
-                Detail = monitorText + ". " + (monitorFacts is not null ? monitorFacts + " " : string.Empty) +
+                Detail = monitorText + ". " + monitorFacts + " " +
                          "Настройки игры синхронизации не мешают.",
                 Why = "Настройки игры правильные: полноэкранный режим и выключенная вертикальная " +
                       "синхронизация — именно то, что нужно для работы переменной синхронизации. " +
                       "Но включена ли она в панели управления видеокартой, программа проверить " +
-                      "не может: эта настройка хранится в зашифрованном файле драйвера." +
-                      (whyUnknown is not null ? " " + whyUnknown : string.Empty),
+                      "не может: эта настройка хранится в зашифрованном файле драйвера.",
                 Recommendation = "Если игра показывает окно «ваш дисплей поддерживает NVIDIA G-Sync, " +
                                  "но сейчас она отключена» — значит, синхронизация выключена вне игры. " +
                                  "Проверьте два места: панель управления NVIDIA → «Дисплей» → " +
@@ -184,8 +205,21 @@ public sealed class GSyncCheck : IDiagnosticCheck
             });
         }
 
-        // --- отдельная строка: обновление драйвера сбрасывает настройку ---
-        results.Add(CheckResult.Info(Id + ".driver",
+        // --- общее замечание: обновление драйвера сбрасывает настройку ---
+        results.Add(DriverNote(Id));
+
+        return Task.FromResult<IReadOnlyList<CheckResult>>(results);
+    }
+
+    /// <summary>
+    /// Замечание о драйвере — его нужно добавлять и при досрочном выходе.
+    ///
+    /// Так вышло после правки: проверка стала возвращать результат раньше, когда
+    /// поддержку монитора определить не удалось, и пункт про драйвер пропадал.
+    /// Тест это поймал. Теперь замечание добавляется общим кодом в конце.
+    /// </summary>
+    private static CheckResult DriverNote(string id) =>
+        CheckResult.Info(id + ".driver",
             "Обновление драйвера сбрасывает G-SYNC",
             "После установки нового драйвера видеокарты настройки панели управления возвращаются " +
             "к значениям по умолчанию — переменная синхронизация оказывается выключенной.",
@@ -193,8 +227,5 @@ public sealed class GSyncCheck : IDiagnosticCheck
             "G-Sync, хотя до обновления всё работало.",
             recommendation: "Если игра снова покажет это окно после обновления драйвера — " +
                             "проверьте панель управления NVIDIA заново. Это ожидаемое поведение " +
-                            "драйвера, а не поломка."));
-
-        return Task.FromResult<IReadOnlyList<CheckResult>>(results);
-    }
+                            "драйвера, а не поломка.");
 }
