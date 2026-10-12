@@ -76,23 +76,29 @@ public sealed class ConnectionTableCheck : IDiagnosticCheck
         var byState = ConnectionCounter.CountByStateActive();
 
         var working = byState.TryGetValue("работает", out var w) ? w : 0;
-        var closing = byState.TryGetValue("закрывается", out var c) ? c : 0;
         var forming = byState.TryGetValue("устанавливается", out var f) ? f : 0;
 
         var parts = new List<string>();
         if (working > 0) parts.Add($"работают {working}");
-        if (closing > 0) parts.Add($"закрываются {closing}");
         if (forming > 0) parts.Add($"устанавливаются {forming}");
 
         var stateText = parts.Count > 0 ? string.Join(", ", parts) : "состояния не определены";
 
-        // Отдельно скажем про закрытые: они в счёт не входят, но человек их видит
-        // в диспетчере и может удивиться разнице.
+        // Отдельно скажем про закрытые и слушающие порты: в счёт они не входят,
+        // но человек видит их в диспетчере и может удивиться разнице.
         var allStates = ConnectionCounter.CountByStateAll();
         var hanging = allStates.TryGetValue("закрыто (висит)", out var h) ? h : 0;
-        var hangingNote = hanging > 0
-            ? $". Ещё {hanging} соединений уже закрыты и ждут очистки — места в роутере они не занимают и в счёт не входят"
-            : string.Empty;
+        var listening = allStates.TryGetValue("порт слушается", out var l) ? l : 0;
+
+        var notes = new List<string>();
+
+        if (hanging > 0)
+            notes.Add($"уже закрыты и ждут очистки: {hanging} — места в роутере они не занимают");
+
+        if (listening > 0)
+            notes.Add($"открыты и ждут входящих: {listening} — это не соединения, роутер ими не занят");
+
+        var hangingNote = notes.Count > 0 ? ". Не входят в счёт — " + string.Join("; ", notes) : string.Empty;
 
         // --- кто держит больше всех ---
         var topText = DescribeTopTalkers(byProcess, total);
@@ -101,7 +107,9 @@ public sealed class ConnectionTableCheck : IDiagnosticCheck
         {
             ["connections.total"] = total,
             ["connections.working"] = working,
-            ["connections.closing"] = closing
+            ["connections.forming"] = forming,
+            ["connections.listening"] = listening,
+            ["connections.hanging"] = hanging
         };
 
         // --- оценка ---
