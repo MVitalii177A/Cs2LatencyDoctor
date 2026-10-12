@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using Cs2LatencyDoctor.Core;
 using Cs2LatencyDoctor.Core.Background;
 using Cs2LatencyDoctor.Core.Checks;
@@ -191,6 +191,115 @@ internal static class CoreTests
             results.Add(("Запись создаёт отсутствующий ключ", false, null));
             results.Add(("Откат очищает только возвращённые записи", false, null));
         }
+
+        RunTest(results, "Счётчик соединений считает только те, что занимают роутер", () =>
+        {
+            // Что проверяем и почему. Роутер ведёт таблицу соответствий между
+            // внутренними и внешними адресами, и строка в ней занята, пока
+            // соединение работает или устанавливается. Закрытые соединения
+            // строку освобождают, хотя Windows показывает их ещё пару минут.
+            //
+            // Если считать и закрытые, числа в отчёте перестают сходиться:
+            // получалось «всего 81, а закрывается 141». Такой отчёт бесполезен —
+            // по нему нельзя понять, действительно ли роутер под нагрузкой.
+            //
+            // Проверяем два свойства: число активных не превышает общее число
+            // соединений в системе, и разбивка по состояниям сходится с итогом.
+            var active = ConnectionCounter.CountActive();
+            var byState = ConnectionCounter.CountByStateActive();
+            var byStateSum = byState.Values.Sum();
+
+            if (active != byStateSum)
+                throw new InvalidOperationException(
+                    $"Сумма по состояниям ({byStateSum}) не совпадает с общим числом активных ({active}). " +
+                    "Значит, в разбивку попадают состояния, которых нет в подсчёте — цифры в отчёте разойдутся.");
+
+            var all = ConnectionCounter.CountByStateAll().Values.Sum();
+
+            if (active > all)
+                throw new InvalidOperationException(
+                    $"Активных соединений ({active}) больше, чем всего в системе ({all}). " +
+                    "Так быть не может: активные — часть общего числа.");
+        });
+
+        RunTest(results, "Разбивка по состояниям не содержит закрытых соединений", () =>
+        {
+            // Закрытые соединения должны показываться отдельной справочной строкой,
+            // но не попадать в разбивку активных. Иначе человек видит в отчёте
+            // «закрывается», хотя эти соединения роутер уже не занимают.
+            var byState = ConnectionCounter.CountByStateActive();
+
+            if (byState.ContainsKey("закрыто (висит)"))
+                throw new InvalidOperationException(
+                    "В разбивку активных попали закрытые соединения — они не занимают таблицу роутера.");
+        });
+
+        RunTest(results, "Проверка G-Sync объясняет, почему не смогла определить поддержку", () =>
+        {
+            // Правило проекта: молчаливого «пропущено» быть не должно. Если программа
+            // не может что-то проверить, она обязана сказать почему и что делать человеку.
+            //
+            // Для G-Sync это особенно важно: включена ли синхронизация в панели
+            // управления NVIDIA, прочитать нельзя — настройка лежит в зашифрованном
+            // файле драйвера. Программа должна честно об этом сказать, а не показывать
+            // «всё хорошо» или пустое «пропущено».
+            var check = new GSyncCheck();
+            var context = new DiagnosticContext { IsAdministrator = false };
+            var results2 = check.RunAsync(context, CancellationToken.None).GetAwaiter().GetResult();
+
+            if (results2.Count == 0)
+                throw new InvalidOperationException("Проверка G-Sync не вернула ни одного результата");
+
+            // Проверяем не конкретный вердикт (он зависит от машины), а полноту объяснения.
+            foreach (var result in results2)
+            {
+                if (result.Severity == Severity.Skipped &&
+                    result.NoHelpReason == NoHelpReason.None)
+                {
+                    throw new InvalidOperationException(
+                        $"Результат «{result.Title}» пропущен без указания причины");
+                }
+
+                if (result.Severity == Severity.Skipped &&
+                    string.IsNullOrWhiteSpace(result.Recommendation))
+                {
+                    throw new InvalidOperationException(
+                        $"Результат «{result.Title}» пропущен без совета, что делать человеку");
+                }
+            }
+
+            // Отдельно: в проверке должен быть пункт про сброс настроек драйвером.
+            // Это наблюдалось на практике и о нём нужно предупреждать заранее.
+            if (!results2.Any(r => r.Id == check.Id + ".driver"))
+                throw new InvalidOperationException(
+                    "Нет пункта о том, что обновление драйвера сбрасывает настройку G-Sync");
+        });
+
+        RunTest(results, "Проверка соединений не ломается при недоступной таблице", () =>
+        {
+            // Таблица соединений может быть недоступна: антивирус, политика безопасности.
+            // В этом случае проверка обязана объяснить причину, а не упасть и не соврать нулём.
+            var check = new ConnectionTableCheck();
+            var context = new DiagnosticContext { IsAdministrator = false };
+
+            IReadOnlyList<CheckResult> outcome;
+
+            try
+            {
+                outcome = check.RunAsync(context, CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    "Проверка соединений упала вместо того, чтобы объяснить проблему: " + ex.Message);
+            }
+
+            if (outcome.Count == 0)
+                throw new InvalidOperationException("Проверка соединений не вернула ни одного результата");
+
+            if (outcome.Any(r => string.IsNullOrWhiteSpace(r.Detail)))
+                throw new InvalidOperationException("У результата проверки соединений нет пояснения");
+        });
 
         RunTest(results, "Откат одной записи не трогает остальные", () =>
         {

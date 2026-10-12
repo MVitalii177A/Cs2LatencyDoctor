@@ -65,6 +65,7 @@ public sealed class DiagnosticRunner
         return new DiagnosticRunner()
             .Add(new NetworkLatencyCheck(path))
             .Add(new NetworkLossCheck())
+            .Add(new ConnectionTableCheck())
             .Add(new DiskCheck())
             .Add(new MemoryCheck())
             .Add(new ThermalCheck())
@@ -73,6 +74,7 @@ public sealed class DiagnosticRunner
             .Add(new PowerCheck())
             .Add(new SchedulerCheck())
             .Add(new Cs2ConfigCheck())
+            .Add(new GSyncCheck())
             .Add(new Cs2RefreshRateCheck())
             .Add(new Cs2LaunchOptionsCheck());
     }

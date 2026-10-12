@@ -35,8 +35,32 @@ public static class Program
     private static string _statePath = string.Empty;
     private static readonly StringBuilder Pending = new();
 
+
     public static async Task<int> Main(string[] args)
     {
+        // Защита от двойного запуска.
+        //
+        // Без неё второй экземпляр создаёт свой файл журнала, и данные
+        // разъезжаются по двум файлам: непонятно, какой из них полный.
+        // А при автозапуске это случится обязательно — человек забудет,
+        // что программа уже работает, и запустит ещё раз.
+        using var single = new Mutex(true, @"Local\NetWatch-single-instance", out var isFirst);
+
+        if (!isFirst)
+        {
+            Console.WriteLine();
+            Console.WriteLine("  NetWatch уже работает.");
+            Console.WriteLine();
+            Console.WriteLine("  Второй экземпляр не нужен: он создал бы отдельный файл журнала,");
+            Console.WriteLine("  и данные разъехались бы по двум файлам.");
+            Console.WriteLine();
+            Console.WriteLine("  Найти работающую программу: откройте окно NetWatch");
+            Console.WriteLine("  или посмотрите файл netwatch-состояние.txt.");
+            Console.WriteLine();
+
+            return 4;
+        }
+
         Console.OutputEncoding = Encoding.UTF8;
         Console.Title = "NetWatch — наблюдение за сетью";
 
@@ -310,7 +334,8 @@ public static class Program
         string TopTalkers,
         string PublicIp,
         long ReceiveErrors,
-        long SendErrors);
+        long SendErrors,
+        string GameHint);
 
     /// <summary>
     /// Что происходило в системе в этот момент. Это и отличает полезную запись
@@ -327,6 +352,9 @@ public static class Program
         var cs2Connections = 0;
         var totalMemory = 0L;
         var usedMemory = 0L;
+        var gameProcesses = 0;
+
+
 
         try
         {
@@ -340,10 +368,12 @@ public static class Program
                     threads += p.Threads.Count;
                     usedMemory += p.WorkingSet64;
 
-                    if (string.Equals(p.ProcessName, "cs2", StringComparison.OrdinalIgnoreCase))
+
+                    if (IsGame(p))
                     {
                         cs2Running = true;
-                        cs2Memory = p.WorkingSet64 / 1024 / 1024;
+                        cs2Memory += p.WorkingSet64 / 1024 / 1024;
+                        gameProcesses++;
                     }
                 }
                 catch { }
@@ -391,7 +421,44 @@ public static class Program
             topTalkers,
             ReadPublicIp(),
             ReadAdapterErrors().Item1,
-            ReadAdapterErrors().Item2);
+            ReadAdapterErrors().Item2,
+            string.Empty);
+    }
+
+    /// <summary>
+    /// Идёт ли сейчас игра.
+    ///
+    /// Проверяем двумя способами, и это не избыточно. Сначала по имени процесса:
+    /// игра называется cs2.exe. Если имя не совпало — смотрим путь запуска:
+    /// он должен указывать в папку игры.
+    ///
+    /// Зачем второй способ. Если Steam обновит игру и запустит её другим файлом,
+    /// проверка по имени перестанет работать, и программа молча решит, что игра
+    /// не идёт. Именно это и случилось: во время игры в журнале стояло «CS2 нет»,
+    /// хотя память выросла с 4% до 8% и соединений стало вдвое больше.
+    ///
+    /// Проверка по пути заодно защищает от ложных срабатываний: чужой процесс
+    /// с похожим именем не попадёт, потому что путь у него другой.
+    /// </summary>
+    private static bool IsGame(Process process)
+    {
+        try
+        {
+            if (process.ProcessName.Contains("cs2", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            var path = process.MainModule?.FileName;
+
+            if (string.IsNullOrEmpty(path)) return false;
+
+            return path.Contains("Counter-Strike Global Offensive", StringComparison.OrdinalIgnoreCase)
+                || path.Contains("steamapps\\common\\Counter-Strike", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            // К чужим процессам доступа нет — это нормально, не наша игра.
+            return false;
+        }
     }
 
     private static string DescribeTalkers()
