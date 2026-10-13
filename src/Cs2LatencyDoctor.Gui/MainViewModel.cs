@@ -83,6 +83,39 @@ public sealed class ManualFixRow
 
     /// <summary>Почему программа не делает это сама.</summary>
     public required string Reason { get; init; }
+
+    /// <summary>
+    /// Затрагивает ли действие всю систему, а не только CS2.
+    ///
+    /// Нужно, чтобы человек не удивился, когда после «настройки CS2» изменится
+    /// поведение других игр.
+    /// </summary>
+    public bool AffectsEverything { get; init; }
+
+    /// <summary>Предупреждение о влиянии на другие игры. Пусто, если влияния нет.</summary>
+    public string ScopeWarning { get; init; } = string.Empty;
+
+    /// <summary>Показывать ли предупреждение — для привязки в окне.</summary>
+    public bool HasScopeWarning => !string.IsNullOrWhiteSpace(ScopeWarning);
+}
+
+/// <summary>
+/// Строка списка исправлений, которые программа применит по кнопке.
+///
+/// Отдельный список нужен, чтобы предупредить о системных правках ДО применения:
+/// человек ставит программу ради CS2 и вправе знать, что часть настроек затронет
+/// все игры. Так и вышло на практике — в другой игре упали кадры, и было непонятно,
+/// откуда это.
+/// </summary>
+public sealed class ApplicableFixRow
+{
+    public required string Title { get; init; }
+
+    /// <summary>В какой проверке это найдено.</summary>
+    public required string Finding { get; init; }
+
+    /// <summary>Затрагивает ли правка всю систему.</summary>
+    public required bool AffectsEverything { get; init; }
 }
 
 /// <summary>Строка журнала изменений: что поменяли и на какое значение.</summary>
@@ -118,6 +151,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     /// <summary>Что программа уже изменила: видно, что и когда, с возможностью вернуть по одному.</summary>
     public ObservableCollection<JournalRow> Journal { get; } = new();
+
+    /// <summary>
+    /// Что программа применит по кнопке. Показывается списком, чтобы человек видел
+    /// перечень ДО нажатия — в том числе пометку «затронет все игры».
+    ///
+    /// Зачем это нужно. Раньше было видно только число исправимых находок, и человек
+    /// не знал, что именно изменится в системе. На практике это привело к вопросу
+    /// «почему в другой игре упали кадры» — ответить было нечем.
+    /// </summary>
+    public ObservableCollection<ApplicableFixRow> ApplicableFixes { get; } = new();
+
+    /// <summary>Есть ли правки, которые затронут не только CS2. Показываем предупреждение.</summary>
+    private bool _hasSystemWideFixes;
+    public bool HasSystemWideFixes
+    {
+        get => _hasSystemWideFixes;
+        set { _hasSystemWideFixes = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>Есть ли что показать в списке «что будет изменено по кнопке».</summary>
+    public bool HasApplicableFixes => ApplicableFixes.Count > 0;
 
     /// <summary>Что изменилось с прошлого замера: отдельно от истории за всё время.</summary>
     private string _beforeAfterText = string.Empty;
@@ -374,9 +428,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 {
                     Title = f.Title,
                     Finding = r.Title,
-                    Reason = f.WhyNotAutomatic ?? "Требуется действие руками"
+                    Reason = f.WhyNotAutomatic ?? "Требуется действие руками",
+                    AffectsEverything = f.AffectsEverything,
+                    ScopeWarning = f.ScopeWarning ?? string.Empty
                 }))
                 .GroupBy(m => m.Title)
+                .Select(g => g.First())
+                .ToList();
+
+            // И то, что программа применит по кнопке. Показываем списком с пометкой
+            // «затронет все игры» — чтобы человек знал об этом ДО нажатия, а не
+            // обнаружил по упавшим кадрам в другой игре.
+            var applicable = report.Results
+                .SelectMany(r => r.ApplicableFixes.Select(f => new ApplicableFixRow
+                {
+                    Title = f.Title,
+                    Finding = r.Title,
+                    AffectsEverything = f.AffectsEverything
+                }))
+                .GroupBy(a => a.Title)
                 .Select(g => g.First())
                 .ToList();
 
@@ -394,8 +464,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 Journal.Clear();
                 foreach (var row in journalRows) Journal.Add(row);
 
+                ApplicableFixes.Clear();
+                foreach (var row in applicable) ApplicableFixes.Add(row);
+
                 OnPropertyChanged(nameof(HasManualFixes));
                 OnPropertyChanged(nameof(HasJournal));
+                OnPropertyChanged(nameof(HasApplicableFixes));
+
+                // Предупреждение о системных правках: показываем только если такие есть.
+                HasSystemWideFixes = applicable.Any(a => a.AffectsEverything);
 
                 // Подпись о том, сколько можно исправить, зависит от списка находок:
                 // её надо обновить вместе с ним, иначе она покажет старые числа.

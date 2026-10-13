@@ -136,11 +136,17 @@ public sealed class NetworkAdapterCheck : IDiagnosticCheck
 
             // Идентификатор исправления должен совпадать с тем, что умеет NetworkAdapterFix,
             // иначе кнопка не найдёт обработчик. Конкретный параметр указываем подпунктом.
+            //
+            // Scope: правка меняет параметры сетевого адаптера в системе, а не настройку
+            // игры. Значит, она затронет весь сетевой трафик — включая другие игры.
+            // Отключение модерации прерываний к тому же перекладывает часть работы на
+            // процессор, а на слабом четырёхъядерном ноутбуке это может стоить кадров.
             var fixList = hostile.Keys
                 .Select(k => new FixAction(FixId,
                     "Отключить: " + (NetworkAdapterReader.LatencyHostileKeywords.TryGetValue(k, out var n) ? n : k),
                     FixRisk.Safe, "Обратимо, значение сохраняется перед изменением.",
-                    SubActionId: FixId + "." + k))
+                    SubActionId: FixId + "." + k,
+                    Scope: FixScope.WholeSystem))
                 .ToList();
 
             // Случай «мы можем помочь»: говорим, что именно сделаем, и что остаётся человеку.

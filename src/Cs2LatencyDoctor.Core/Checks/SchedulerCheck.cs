@@ -42,10 +42,13 @@ public sealed class SchedulerCheck : IDiagnosticCheck
         var fixes = new List<FixAction>();
         if (!string.Equals(category, "High", StringComparison.OrdinalIgnoreCase))
         {
+            // Scope: правится таблица планировщика Windows, а не настройка игры.
+            // Значит, приоритет меняется сразу для всех игр.
             fixes.Add(new FixAction("scheduler.mmcss.games", "Поднять категорию планирования игр",
                 FixRisk.Safe,
                 "Обратимо. Влияние умеренное — это не главный источник лага, но убирает лишнюю конкуренцию за CPU.",
-                SubActionId: FixId + ".Scheduling Category"));
+                SubActionId: FixId + ".Scheduling Category",
+                Scope: FixScope.WholeSystem));
         }
 
         if (priority is null || priority < 6)
@@ -53,7 +56,8 @@ public sealed class SchedulerCheck : IDiagnosticCheck
             fixes.Add(new FixAction("scheduler.mmcss.games", "Поднять приоритет игр в планировщике",
                 FixRisk.Safe,
                 "Обратимо. Влияние умеренное — это не главный источник лага, но убирает лишнюю конкуренцию за CPU.",
-                SubActionId: FixId + ".Priority"));
+                SubActionId: FixId + ".Priority",
+                Scope: FixScope.WholeSystem));
         }
 
         if (fixes.Count > 0)
@@ -83,7 +87,8 @@ public sealed class SchedulerCheck : IDiagnosticCheck
                 "На UDP-трафик игры влияет слабо, но убрать ограничение безвредно.",
                 new[] { new FixAction("scheduler.mmcss", "Отключить NetworkThrottlingIndex",
                     FixRisk.Safe, "Обратимо.",
-                    SubActionId: FixId + ".NetworkThrottlingIndex") },
+                    SubActionId: FixId + ".NetworkThrottlingIndex",
+                    Scope: FixScope.WholeSystem) },
                 "Программа сделает это сама при «Применить исправления». " +
                 "Ожидать чуда не стоит: на игру это влияет слабо — правка убирает ограничение, " +
                 "которое в основном касается пропускной способности, а не задержки."));

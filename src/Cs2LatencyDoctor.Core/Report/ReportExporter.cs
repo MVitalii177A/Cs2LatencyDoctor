@@ -41,6 +41,53 @@ public sealed class DeveloperDetails
     public bool HistoryFileExists { get; init; }
     public bool IsAdministrator { get; init; }
 
+    /// <summary>
+    /// Что именно программа изменила в системе.
+    ///
+    /// Раньше в отчёт попадало только ЧИСЛО записей журнала. Этого мало: по числу
+    /// нельзя понять, что было изменено, а значит нельзя объяснить и последствия.
+    /// Так и вышло на практике — после применения исправлений в другой игре упала
+    /// частота кадров, и по отчёту невозможно было сказать, связано это с программой
+    /// или нет. Теперь видно каждое изменение с прежним и новым значением.
+    /// </summary>
+    public IReadOnlyList<AppliedChange> AppliedChanges { get; init; } = Array.Empty<AppliedChange>();
+
+    /// <summary>Как вернуть изменения назад. Нужно, чтобы человек не искал способ.</summary>
+    public string? RevertHint { get; init; }
+
+    /// <summary>
+    /// Одно изменение, которое программа внесла в систему.
+    ///
+    /// Показываем и старое, и новое значение: по ним видно, что было и что стало,
+    /// и можно вернуть вручную, даже если программа недоступна.
+    /// </summary>
+    public sealed class AppliedChange
+    {
+        /// <summary>Что за исправление: например power.usb.suspend.</summary>
+        public required string FixId { get; init; }
+
+        /// <summary>Название параметра человеческим языком.</summary>
+        public required string Title { get; init; }
+
+        /// <summary>Что это за изменение: значение реестра, настройка драйвера и т. п.</summary>
+        public required string Kind { get; init; }
+
+        /// <summary>Где менялось — раздел реестра или другой адрес настройки.</summary>
+        public required string Location { get; init; }
+
+        /// <summary>Имя параметра.</summary>
+        public required string Name { get; init; }
+
+        /// <summary>Значение до правки. Пусто означает, что параметра не было.</summary>
+        public string? OldValue { get; init; }
+
+        /// <summary>Значение после правки.</summary>
+        public string? NewValue { get; init; }
+
+        /// <summary>Когда применено — по времени видно, совпадает ли с наблюдаемой проблемой.</summary>
+        public DateTimeOffset AppliedAt { get; init; }
+    }
+
     /// <summary>Что именно попадает в файл и чего в нём не будет. Показывается человеку.</summary>
     public static string DescribeContents() =>
         string.Join(Environment.NewLine, new[]
@@ -52,7 +99,9 @@ public sealed class DeveloperDetails
             "  • материнская плата, процессор, видеокарта с версией драйвера;",
             "  • объём и частота памяти;",
             "  • все находки проверки с цифрами и пояснениями;",
-            "  • состояние программы: журнал изменений, история замеров.",
+            "  • состояние программы: журнал изменений, история замеров;",
+            "  • список изменений, которые программа внесла в систему:",
+            "    что именно, где, какое значение было и какое стало.",
             "",
             "Чего в файле НЕ будет:",
             "",
@@ -222,7 +271,25 @@ public static class ReportExporter
                 dataDirectory = developer.DataDirectory,
                 undoJournalExists = developer.UndoJournalExists,
                 undoJournalEntries = developer.UndoJournalEntries,
-                historyFileExists = developer.HistoryFileExists
+                historyFileExists = developer.HistoryFileExists,
+
+                // Что именно программа поменяла в системе. Список, а не только число:
+                // по нему видно, что было и что стало, и можно ли это вернуть.
+                appliedChanges = developer.AppliedChanges.Count == 0
+                    ? null
+                    : developer.AppliedChanges.Select(c => new
+                    {
+                        fixId = c.FixId,
+                        title = c.Title,
+                        kind = c.Kind,
+                        location = c.Location,
+                        name = c.Name,
+                        oldValue = c.OldValue,
+                        newValue = c.NewValue,
+                        appliedAt = c.AppliedAt.ToString("yyyy-MM-dd HH:mm:ss")
+                    }).ToArray(),
+
+                revertHint = developer.RevertHint
             },
 
             checkRun = report is null ? null : new

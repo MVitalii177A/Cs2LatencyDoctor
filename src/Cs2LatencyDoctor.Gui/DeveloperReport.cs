@@ -58,6 +58,7 @@ public static class DeveloperReport
     public static DeveloperDetails Collect()
     {
         var journalPath = SafeJournalPath();
+        var changes = SafeAppliedChanges();
 
         return new DeveloperDetails
         {
@@ -67,8 +68,65 @@ public static class DeveloperReport
             UndoJournalExists = File.Exists(journalPath),
             UndoJournalEntries = SafeJournalEntryCount(),
             HistoryFileExists = File.Exists(SafeHistoryPath()),
-            IsAdministrator = HostInfo.IsAdministrator()
+            IsAdministrator = HostInfo.IsAdministrator(),
+            AppliedChanges = changes,
+            RevertHint = BuildRevertHint(changes.Count)
         };
+    }
+
+    /// <summary>
+    /// Что именно программа изменила в системе — для отчёта.
+    ///
+    /// Читаем журнал отмены: в нём каждое изменение с прежним и новым значением.
+    /// Нужно, чтобы по отчёту можно было ответить на вопрос «а не из-за программы ли
+    /// стало хуже в другой игре» — и вернуть всё назад, даже не имея доступа к машине.
+    /// </summary>
+    private static IReadOnlyList<DeveloperDetails.AppliedChange> SafeAppliedChanges()
+    {
+        try
+        {
+            return new UndoJournal().Entries
+                .Select(entry => new DeveloperDetails.AppliedChange
+                {
+                    FixId = entry.FixId,
+                    Title = entry.Title,
+                    Kind = entry.Kind,
+                    Location = entry.Location,
+                    Name = entry.Name,
+                    OldValue = entry.OldValue,
+                    NewValue = entry.NewValue,
+                    AppliedAt = entry.AppliedAt
+                })
+                .ToList();
+        }
+        catch
+        {
+            // Журнал недоступен или повреждён — это не повод не сохранить отчёт.
+            return Array.Empty<DeveloperDetails.AppliedChange>();
+        }
+    }
+
+    /// <summary>
+    /// Как вернуть изменения назад. Пишем прямо в отчёт, потому что человек,
+    /// читающий отчёт, может быть уже не за тем компьютером.
+    /// </summary>
+    private static string? BuildRevertHint(int changeCount)
+    {
+        if (changeCount == 0)
+            return "Программа ничего не меняла: журнал изменений пуст.";
+
+        return
+            $"Программа внесла {changeCount} изменений. Вернуть всё назад можно двумя способами:" +
+            Environment.NewLine +
+            "  1. В программе: кнопка «Откатить изменения» — она вернёт значения из журнала." +
+            Environment.NewLine +
+            "  2. Вручную: в списке выше у каждого изменения указано, где оно находится, " +
+            "какой параметр менялся и какое значение было раньше. Верните прежние значения " +
+            "и перезагрузите компьютер." +
+            Environment.NewLine +
+            "Если после применения исправлений в ДРУГОЙ игре стало хуже — начните с отката: " +
+            "так вы точно узнаете, связано это с программой или нет. " +
+            "Откат не затрагивает настройки самих игр: они лежат в их собственных файлах.";
     }
 
     /// <summary>Что именно попадёт в файл и чего в нём не будет. Показывается человеку перед сохранением.</summary>

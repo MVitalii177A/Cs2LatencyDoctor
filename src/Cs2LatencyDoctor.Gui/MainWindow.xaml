@@ -257,6 +257,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <Border Grid.Row="0" Style="{StaticResource Panel}" Margin="0,0,0,12">
@@ -270,22 +271,14 @@
                 </Border>
 
                 <Border Grid.Row="1" Style="{StaticResource Panel}" Margin="0,0,0,12">
-                    <DockPanel>
-                        <StackPanel DockPanel.Dock="Top">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <!-- Фоновые программы: отдельным блоком внутри прокрутки -->
                             <TextBlock Text="ФОНОВЫЕ ПРОГРАММЫ" Style="{StaticResource SectionTitle}"/>
                             <TextBlock Text="Отметьте то, что не нужно во время матча. Рабочие и системные программы защищены от остановки."
                                        Foreground="{StaticResource MutedBrush}" FontSize="11"
                                        TextWrapping="Wrap" Margin="0,0,0,8"/>
-                        </StackPanel>
 
-                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button Content="Поставить на паузу" Style="{StaticResource BaseButton}"
-                                    Click="OnPauseClick"/>
-                            <Button Content="Вернуть обратно" Style="{StaticResource BaseButton}"
-                                    Margin="8,0,0,0" Click="OnResumeClick" Background="#24402C"/>
-                        </StackPanel>
-
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
                             <ItemsControl ItemsSource="{Binding BackgroundApps}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -302,8 +295,57 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                        </ScrollViewer>
-                    </DockPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,14">
+                                <Button Content="Поставить на паузу" Style="{StaticResource BaseButton}"
+                                        Click="OnPauseClick"/>
+                                <Button Content="Вернуть обратно" Style="{StaticResource BaseButton}"
+                                        Margin="8,0,0,0" Click="OnResumeClick" Background="#24402C"/>
+                            </StackPanel>
+
+                <!--
+                  Что программа применит по кнопке. Показываем перечень ДО нажатия:
+                  человек должен знать, что именно изменится в системе, а не узнавать
+                  об этом по упавшим кадрам в другой игре. Пометка «затронет все игры»
+                  стоит у системных правок отдельно.
+                -->
+                <Border Style="{StaticResource Panel}" Margin="0,0,0,12"
+                        Visibility="{Binding HasApplicableFixes, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="ЧТО БУДЕТ ИЗМЕНЕНО ПО КНОПКЕ" Style="{StaticResource SectionTitle}"/>
+
+                        <!-- Предупреждение видно, только если среди правок есть системные. -->
+                        <Border Background="#3A2A16" CornerRadius="6" Padding="10" Margin="0,0,0,8"
+                                Visibility="{Binding HasSystemWideFixes, Converter={StaticResource BoolToVisibility}}">
+                            <StackPanel>
+                                <TextBlock Text="Внимание: часть правок системные"
+                                           Foreground="#F5A524" FontSize="12" FontWeight="SemiBold"
+                                           TextWrapping="Wrap"/>
+                                <TextBlock Foreground="#E6E7EB" FontSize="11" TextWrapping="Wrap"
+                                           Margin="0,4,0,0"
+                                           Text="Они меняют настройки Windows или драйвера, поэтому затронут не только CS2, но и все остальные игры и программы. Если после применения в другой игре стало хуже — верните изменения кнопкой «Откатить изменения»."/>
+                            </StackPanel>
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding ApplicableFixes}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#1E2A38" CornerRadius="6" Padding="10" Margin="0,0,0,6">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Title}" Foreground="#E6E7EB"
+                                                       FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding Finding}" Foreground="#8B8D98"
+                                                       FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                            <TextBlock Text="затронет все игры и программы"
+                                                       Foreground="#F5A524" FontSize="11"
+                                                       TextWrapping="Wrap" Margin="0,3,0,0"
+                                                       Visibility="{Binding AffectsEverything, Converter={StaticResource BoolToVisibility}}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </Border>
 
                 <!--
@@ -311,7 +353,7 @@
                   исправляет не всё: если эти пункты не показать отдельно, человек решит,
                   что она сделает всё сама.
                 -->
-                <Border Grid.Row="2" Style="{StaticResource Panel}" Margin="0,0,0,12"
+                <Border Style="{StaticResource Panel}" Margin="0,0,0,12"
                         Visibility="{Binding HasManualFixes, Converter={StaticResource BoolToVisibility}}">
                     <StackPanel>
                         <TextBlock Text="СДЕЛАТЬ РУКАМИ" Style="{StaticResource SectionTitle}"/>
@@ -330,6 +372,9 @@
                                                        FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
                                             <TextBlock Text="{Binding Reason}" Foreground="#C9CBD3"
                                                        FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                            <TextBlock Text="{Binding ScopeWarning}" Foreground="#F5A524"
+                                                       FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0"
+                                                       Visibility="{Binding HasScopeWarning, Converter={StaticResource BoolToVisibility}}"/>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
@@ -342,7 +387,7 @@
                   Что программа уже изменила. Нужно, чтобы было видно, что именно поменялось,
                   и можно было вернуть отдельную запись, а не всё сразу.
                 -->
-                <Border Grid.Row="3" Style="{StaticResource Panel}" Margin="0,0,0,12"
+                <Border Style="{StaticResource Panel}" Margin="0,0,0,12"
                         Visibility="{Binding HasJournal, Converter={StaticResource BoolToVisibility}}">
                     <DockPanel>
                         <StackPanel DockPanel.Dock="Top">
@@ -382,26 +427,27 @@
                     </DockPanel>
                 </Border>
 
-                <!--
-                  Сравнение с предыдущим замером. Отдельно от истории: история отвечает
-                  на вопрос «помогло ли за всё время», а здесь — «что изменилось сейчас».
-                -->
-                <Border Grid.Row="4" Style="{StaticResource Panel}" Margin="0,0,0,12">
-                    <StackPanel>
-                        <TextBlock Text="{Binding BeforeAfterTitle}" Style="{StaticResource SectionTitle}"/>
-                        <TextBlock Text="{Binding BeforeAfterText}" Foreground="#C9CBD3"
-                                   FontSize="11" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </Border>
+                            <!-- Сравнение с предыдущим замером -->
+                            <Border Style="{StaticResource Panel}" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding BeforeAfterTitle}" Style="{StaticResource SectionTitle}"/>
+                                    <TextBlock Text="{Binding BeforeAfterText}" Foreground="#C9CBD3"
+                                               FontSize="11" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
 
-                <Border Grid.Row="5" Style="{StaticResource Panel}">
-                    <StackPanel>
-                        <TextBlock Text="ЧТО ПРОИЗОШЛО" Style="{StaticResource SectionTitle}"/>
-                        <TextBlock Text="{Binding ApplyResult}" Foreground="#C9CBD3"
-                                   FontSize="11" TextWrapping="Wrap"/>
-                        <TextBlock Text="{Binding BackgroundResult}" Foreground="#C9CBD3"
-                                   FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                    </StackPanel>
+                            <!-- Что произошло при применении исправлений -->
+                            <Border Style="{StaticResource Panel}">
+                                <StackPanel>
+                                    <TextBlock Text="ЧТО ПРОИЗОШЛО" Style="{StaticResource SectionTitle}"/>
+                                    <TextBlock Text="{Binding ApplyResult}" Foreground="#C9CBD3"
+                                               FontSize="11" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding BackgroundResult}" Foreground="#C9CBD3"
+                                               FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Border>
             </Grid>
         </Grid>

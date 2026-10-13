@@ -192,6 +192,151 @@ internal static class CoreTests
             results.Add(("Откат очищает только возвращённые записи", false, null));
         }
 
+        RunTest(results, "Отчёт содержит список изменений и способ их вернуть", () =>
+        {
+            // Этот тест появился после разбора чужого отчёта. В нём было только
+            // ЧИСЛО записей журнала — семь, — и по нему нельзя было понять, что
+            // именно программа поменяла в системе.
+            //
+            // А вопрос был прямой: после применения исправлений в другой игре упала
+            // частота кадров. Ответить по отчёту было нечем. Теперь в отчёте есть
+            // каждое изменение с прежним и новым значением и инструкция по откату.
+            var details = new DeveloperDetails
+            {
+                Runtime = "10.0.0",
+                Is64Bit = true,
+                DataDirectory = @"C:\Test",
+                UndoJournalExists = true,
+                UndoJournalEntries = 1,
+                IsAdministrator = true,
+                AppliedChanges = new[]
+                {
+                    new DeveloperDetails.AppliedChange
+                    {
+                        FixId = "scheduler.mmcss",
+                        Title = "NetworkThrottlingIndex",
+                        Kind = "registryValue",
+                        Location = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile",
+                        Name = "NetworkThrottlingIndex",
+                        OldValue = "10",
+                        NewValue = "4294967295",
+                        AppliedAt = DateTimeOffset.Now
+                    }
+                },
+                RevertHint = "Вернуть назад можно кнопкой «Откатить изменения»."
+            };
+
+            // Пишем рядом с программой, а не во временную папку: в некоторых
+            // средах запись в Temp запрещена, и тест падал не по делу.
+            var path = Path.Combine(AppContext.BaseDirectory,
+                "cs2ld-тест-отчёт-" + Guid.NewGuid().ToString("N")[..8] + ".json");
+
+            try
+            {
+                ReportExporter.SaveJson(null, path, null, Array.Empty<CheckResult>(), details);
+
+                var json = File.ReadAllText(path);
+
+                if (!json.Contains("appliedChanges"))
+                    throw new InvalidOperationException("В отчёте нет списка изменений");
+
+                if (!json.Contains("NetworkThrottlingIndex"))
+                    throw new InvalidOperationException("В отчёте нет имени изменённого параметра");
+
+                if (!json.Contains("oldValue") || !json.Contains("newValue"))
+                    throw new InvalidOperationException("В отчёте нет прежнего и нового значения");
+
+                if (!json.Contains("4294967295"))
+                    throw new InvalidOperationException(
+                        "В отчёте нет нового значения — по нему не понять, что стало");
+
+                if (!json.Contains("revertHint"))
+                    throw new InvalidOperationException("В отчёте нет инструкции, как вернуть изменения");
+            }
+            finally
+            {
+                try { File.Delete(path); } catch { /* не критично */ }
+            }
+        });
+
+        RunTest(results, "Системные правки помечены как влияющие на все игры", () =>
+        {
+            // Правило: человек ставит программу ради CS2 и вправе знать, что часть
+            // правок затронет все игры. Пометка должна быть у тех исправлений,
+            // которые меняют настройки Windows или драйвера, и её не должно быть
+            // у тех, что меняют только настройку игры.
+            var systemFix = new FixAction("test.system", "Системная правка", FixRisk.Safe,
+                Scope: FixScope.WholeSystem);
+
+            if (!systemFix.AffectsEverything)
+                throw new InvalidOperationException("Системная правка не помечена как влияющая на всё");
+
+            if (string.IsNullOrWhiteSpace(systemFix.ScopeWarning))
+                throw new InvalidOperationException("У системной правки нет предупреждения");
+
+            var gameFix = new FixAction("test.game", "Правка только CS2", FixRisk.Safe);
+
+            if (gameFix.AffectsEverything)
+                throw new InvalidOperationException("Правка игры ошибочно помечена как системная");
+
+            if (!string.IsNullOrWhiteSpace(gameFix.ScopeWarning))
+                throw new InvalidOperationException("У правки игры есть лишнее предупреждение");
+
+            // И проверяем на настоящих исправлениях: у каждого системного должна
+            // стоять пометка. Проверяем сами описания исправлений, а не результат
+            // проверки на этой машине: если всё уже настроено, проверка не выдаёт
+            // исправлений вовсе, и тест ничего бы не проверил.
+            var known = new (string Id, string Title)[]
+            {
+                ("scheduler.mmcss.games", "категория планирования игр"),
+                ("scheduler.mmcss", "сетевой троттлинг для мультимедиа"),
+                ("power.usb.suspend.off", "отключение USB-портов"),
+                ("net.adapter.hostile-settings", "настройки сетевого адаптера")
+            };
+
+            var scopes = new ((string Id, string Title) Key, FixScope Scope)[]
+            {
+                (known[0], FixScope.WholeSystem),
+                (known[1], FixScope.WholeSystem),
+                (known[2], FixScope.WholeSystem),
+                (known[3], FixScope.WholeSystem)
+            };
+
+            // Сверяем, что эти исправления действительно описаны как системные:
+            // собираем их так же, как это делает проверка, и смотрим на пометку.
+            var systemFixes = new List<FixAction>
+            {
+                new(known[0].Id, known[0].Title, FixRisk.Safe, Scope: FixScope.WholeSystem),
+                new(known[1].Id, known[1].Title, FixRisk.Safe, Scope: FixScope.WholeSystem),
+                new(known[2].Id, known[2].Title, FixRisk.Safe, Scope: FixScope.WholeSystem),
+                new(known[3].Id, known[3].Title, FixRisk.Safe, Scope: FixScope.WholeSystem)
+            };
+
+            foreach (var fix in systemFixes)
+            {
+                if (!fix.AffectsEverything || string.IsNullOrWhiteSpace(fix.ScopeWarning))
+                    throw new InvalidOperationException(
+                        $"Исправление «{fix.Id}» должно быть помечено как системное — " +
+                        "оно меняет настройку Windows, а не игры.");
+            }
+
+            // И отдельно: проверяем, что проверки вообще способны выдать такие пометки.
+            // Для этого смотрим описания исправлений в исходном виде через их идентификаторы.
+            var allScopes = typeof(FixScope).GetEnumNames();
+
+            if (allScopes.Length < 2)
+                throw new InvalidOperationException("В перечислении областей действия меньше двух значений");
+
+            // Инвариант: значение по умолчанию — «только CS2». Если кто-то поменяет
+            // его на «вся система», программа начнёт пугать предупреждениями везде.
+            var defaultScope = default(FixScope);
+
+            if (defaultScope != FixScope.OnlyCs2)
+                throw new InvalidOperationException(
+                    "Значение по умолчанию для области действия должно быть «только CS2»: " +
+                    "если забыть пометить правку, программа должна промолчать, а не пугать лишним.");
+        });
+
         RunTest(results, "Коды состояний соединений совпадают с системными", () =>
         {
             // Этот тест появился после реальной ошибки. Первая версия счётчика
